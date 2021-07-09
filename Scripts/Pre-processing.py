@@ -8,8 +8,8 @@ import glob
 
 ##
 
-number_of_threads = 13
-preprocessing = "adaptation"
+number_of_threads = 6
+preprocessing = "original"
 write_csv = False
 
 
@@ -18,7 +18,7 @@ write_csv = False
 db_folder_kaggle = os.path.join('..', "Database")
 images_folder_kaggle = os.path.join(db_folder_kaggle, "images")
 preprocessed_folder_kaggle = os.path.join(db_folder_kaggle, "preprocessing images", preprocessing)
-labels_dir = pd.read_csv(os.path.join(db_folder_kaggle, "labels"))
+labels_dir = os.path.join(db_folder_kaggle, "labels")
 labels = pd.read_csv(os.path.join(labels_dir, "labels.csv"))
 
 ##

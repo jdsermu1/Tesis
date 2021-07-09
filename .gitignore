@@ -1,5 +1,6 @@
 /Database/images/*.jpeg
 /Database/preprocessing images/*/*.jpeg
+**/diabetic-retinopathy-detection.zip
 
 **/.idea/
 **/.python-version
