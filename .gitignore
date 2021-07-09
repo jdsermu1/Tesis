@@ -1,13 +1,8 @@
-DR Databases/Messidor 2/IMAGES
-DR Databases/Kaggle/images
-DR Databases/Kaggle/logs
-DR Databases/Kaggle/preprocessed images
-DR Databases/Kaggle/strategy 1
-DR Databases/Kaggle/strategy 2
-DR Databases/Kaggle/strategy 3
-DR Databases/Kaggle/strategy 4
+/Database/images/*.jpeg
+/Database/preprocessing images/*/*.jpeg
 
-.idea/
-.python-version
-.ipynb_checkpoints/
+**/.idea/
+**/.python-version
+**/.ipynb_checkpoints/
 
+/Database/runs
