@@ -1,5 +1,7 @@
 ##
 import random
+
+import numpy
 import torch
 import os
 import pandas as pd
@@ -130,7 +132,8 @@ def train(epoch):
     model.train()
     size = len(train_dataloader.dataset)
     number_batches = len(train_dataloader)
-    running_loss = 0.0
+    running_loss, correct = 0.0, 0
+    running_predictions, running_labels = numpy.array([]), numpy.array([])
     for i, (X, y) in enumerate(train_dataloader):
         X, y = X.to(device), y.to(device)
         pred = model(X)
@@ -139,13 +142,34 @@ def train(epoch):
         loss.backward()
         optimizer.step()
         running_loss += loss.item()
+        correct += (pred.argmax(1) == y).type(torch.float).sum().item()
+        running_labels = np.concatenate([running_predictions, y.to("cpu").numpy()])
+        running_predictions = np.concatenate([running_predictions, pred.argmax(1).to("cpu").numpy()])
         if i % (int(number_batches/10)) == 0 and i != 0:
             loss, current = loss.item(), i * len(X)
             print(f"loss: {loss:>7f}  [{current:>5d}/{size:>5d}]")
             writer.add_scalar('Loss/Training',
                               running_loss / (int(number_batches/10)),
                               epoch * len(train_dataloader) + i)
-            running_loss = 0.0
+            writer.add_scalar('Accuracy/Training',
+                              correct / len(running_predictions),
+                              epoch * len(train_dataloader) + i)
+
+            precision, recall, f1_score, _ = precision_recall_fscore_support(running_labels, running_predictions,
+                                                                             labels=[0, 1, 2, 3, 4])
+            for j in range(5):
+                writer.add_scalar(f'Precision/Training/Class_{str(j)}',
+                                  precision[j],
+                                  epoch * len(train_dataloader) + i)
+                writer.add_scalar(f'Recall/Training/Class_{str(j)}',
+                                  recall[j],
+                                  epoch * len(train_dataloader) + i)
+                writer.add_scalar(f'F1_Score/Training/Class_{str(j)}',
+                                  f1_score[j],
+                                  epoch * len(train_dataloader) + i)
+            running_loss, correct = 0.0, 0
+            running_predictions, running_labels = numpy.array([]), numpy.array([])
+
 
 
 def validation(epoch):
@@ -192,6 +216,10 @@ for t in range(epochs):
     validation(t)
     scheduler.step()
 print("Done!")
+
+
+
+writer.add_hparams({})
 
 
 writer.flush()

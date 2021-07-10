@@ -24,9 +24,9 @@ import glob
 ##
 # Find out distribution of labels in classes
 
-# labels = pd.read_csv(os.path.join("Database", "labels", "labels.csv"))
-#
-# stats = pd.DataFrame({"percentage": labels["level"].value_counts(normalize=True)*100,
-#                       "count": labels["level"].value_counts()})
-#
-# stats
+labels = pd.read_csv(os.path.join("Database", "labels", "labels.csv"))
+
+stats = pd.DataFrame({"percentage": labels["level"].value_counts(normalize=True)*100,
+                      "count": labels["level"].value_counts()})
+
+stats

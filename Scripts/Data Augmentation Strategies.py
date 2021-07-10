@@ -67,7 +67,7 @@ def strategy2():
 def strategy3():
     size_validation = 100
     size_test = 312
-    size_train = 40000
+    size_train = 15000
     size_partition = size_validation + size_test
     labels_train = pd.DataFrame({})
     labels_test = pd.DataFrame({})
