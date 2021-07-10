@@ -20,26 +20,24 @@ from sklearn.metrics import precision_recall_fscore_support
 ##
 
 num_classes = 5
-batch_size = 30
+batch_size = 43
 epochs = 12
 lr = 1e-6
-strategy = "strategy2O"
+preprocessing = "adaptation"
+strategy = "strategy3"
 
 ##
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
-kaggle_folder = os.path.join("DR Databases", "Kaggle")
+database_folder = os.path.join("..", "Database")
 
-train_folder = os.path.join(kaggle_folder, strategy, "train")
+images_folder = os.path.join(database_folder, "preprocessing images", preprocessing)
 
-validation_folder = os.path.join(kaggle_folder, strategy, "validation")
+annotations_file = os.path.join(database_folder, "labels",
+                                f"labelsPreprocessing{preprocessing.capitalize()}{strategy.capitalize()}.csv")
 
-test_folder = os.path.join(kaggle_folder, strategy, "test")
-
-annotations_file = os.path.join(kaggle_folder, "labels.csv")
-
-writer = SummaryWriter(os.path.join(kaggle_folder, f'runs/{datetime.now().strftime("%d-%m-%Y %H:%M:%S")}'))
+writer = SummaryWriter(os.path.join(database_folder, "runs", datetime.now().strftime("%d-%m-%Y %H:%M:%S")))
 
 ##
 
@@ -48,8 +46,7 @@ class CustomDataset(Dataset):
     def __init__(self, labels_file, img_dir, folder="train", transform=None, target_transform=None):
         self.img_dir = img_dir
         self.img_labels = pd.read_csv(labels_file)
-        self.img_labels = self.img_labels[self.img_labels["image"].isin([x[34+len(folder):-5] for x in
-                                                                         glob.glob(os.path.join(img_dir, "**", "*.jpeg"))])]
+        self.img_labels = self.img_labels[self.img_labels["set"] == folder]
         self.transform = transform
         self.target_transform = target_transform
         self.folder = folder
@@ -59,7 +56,7 @@ class CustomDataset(Dataset):
 
     def __getitem__(self, idx):
         label = self.img_labels.iloc[idx, 1]
-        img_path = os.path.join(self.img_dir, str(label), self.img_labels.iloc[idx, 0]+".jpeg")
+        img_path = os.path.join(self.img_dir, self.img_labels.iloc[idx, 0]+".jpeg")
         image = io.imread(img_path)
         if self.transform:
             image = self.transform(image)
@@ -70,7 +67,10 @@ class CustomDataset(Dataset):
 
 preprocess = Compose([
     ToTensor(),
-    CenterCrop((540, 540))
+    # CenterCrop((540, 540)),
+    RandomVerticalFlip(0.5),
+    RandomHorizontalFlip(0.5),
+    RandomRotation((0, 360))
     # Resize(224),
     # Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
 ])
@@ -80,13 +80,9 @@ preprocess_target = Compose([
 ])
 
 # to_one_hot = Lambda(lambda y: torch.zeros(5, dtype=torch.float).scatter_(dim=0, index=torch.tensor(y), value=1))
-train_dataset = CustomDataset(annotations_file, train_folder, transform=preprocess)
-validation_dataset = CustomDataset(annotations_file, validation_folder, folder="validation", transform=preprocess)
-test_dataset = CustomDataset(annotations_file, test_folder, folder="test", transform=preprocess)
-
-print(train_dataset.__len__())
-print(validation_dataset.__len__())
-print(test_dataset.__len__())
+train_dataset = CustomDataset(annotations_file, images_folder, transform=preprocess)
+validation_dataset = CustomDataset(annotations_file, images_folder, folder="validation", transform=preprocess)
+test_dataset = CustomDataset(annotations_file, images_folder, folder="test", transform=preprocess)
 ##
 
 train_dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
