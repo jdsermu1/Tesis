@@ -10,7 +10,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from torch.utils.data import Dataset, DataLoader
 from torchvision.transforms import ToTensor, Lambda, Compose, Resize, RandomCrop, Normalize, RandomHorizontalFlip, \
-    RandomVerticalFlip, RandomRotation, CenterCrop
+    RandomVerticalFlip, RandomRotation, CenterCrop, InterpolationMode
 from torch import nn, optim
 from torchvision import models
 from skimage import io
@@ -22,10 +22,10 @@ from sklearn.metrics import precision_recall_fscore_support
 ##
 
 num_classes = 5
-batch_size = 43
+batch_size = 50
 epochs = 12
-lr = 1e-6
-preprocessing = "adaptation"
+lr = 1e-5
+preprocessing = "original"
 strategy = "strategy3"
 
 ##
@@ -67,12 +67,22 @@ class CustomDataset(Dataset):
         return image, label
 
 
-preprocess = Compose([
+preprocess_train = Compose([
     ToTensor(),
-    # CenterCrop((540, 540)),
+    CenterCrop((540, 540)),
     RandomVerticalFlip(0.5),
     RandomHorizontalFlip(0.5),
-    RandomRotation((0, 360))
+    RandomRotation((0, 360)),
+    # Resize(224),
+    # Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+])
+
+preprocess = Compose([
+    ToTensor(),
+    CenterCrop((540, 540)),
+    # RandomVerticalFlip(0.5),
+    # RandomHorizontalFlip(0.5),
+    # RandomRotation((0, 360), interpolation=InterpolationMode.BILINEAR)
     # Resize(224),
     # Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
 ])
@@ -82,7 +92,7 @@ preprocess_target = Compose([
 ])
 
 # to_one_hot = Lambda(lambda y: torch.zeros(5, dtype=torch.float).scatter_(dim=0, index=torch.tensor(y), value=1))
-train_dataset = CustomDataset(annotations_file, images_folder, transform=preprocess)
+train_dataset = CustomDataset(annotations_file, images_folder, transform=preprocess_train)
 validation_dataset = CustomDataset(annotations_file, images_folder, folder="validation", transform=preprocess)
 test_dataset = CustomDataset(annotations_file, images_folder, folder="test", transform=preprocess)
 ##
@@ -143,7 +153,7 @@ def train(epoch):
         optimizer.step()
         running_loss += loss.item()
         correct += (pred.argmax(1) == y).type(torch.float).sum().item()
-        running_labels = np.concatenate([running_predictions, y.to("cpu").numpy()])
+        running_labels = np.concatenate([running_labels, y.to("cpu").numpy()])
         running_predictions = np.concatenate([running_predictions, pred.argmax(1).to("cpu").numpy()])
         if i % (int(number_batches/10)) == 0 and i != 0:
             loss, current = loss.item(), i * len(X)
