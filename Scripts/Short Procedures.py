@@ -34,15 +34,26 @@ import glob
 
 ##
 # Compare results Li 2019 get recall and precision
+#
 
-matrix_nn1 = np.array([[39031, 2693, 2361, 75, 160],
-                       [118, 438, 185, 0, 1],
-                       [339, 626, 5058, 738, 392],
-                       [0, 0, 170, 332, 102],
-                       [43, 5, 85, 69, 551]])
+# matrix_nn1 = np.array([[39031, 2693, 2361, 75, 160],
+#                        [118, 438, 185, 0, 1],
+#                        [339, 626, 5058, 738, 392],
+#                        [0, 0, 170, 332, 102],
+#                        [43, 5, 85, 69, 551]])
+#
+# recall_nn1 = np.diagonal(np.divide(matrix_nn1, matrix_nn1.sum(0, keepdims=True)))
+#
+# precision_nn1 = np.diagonal(np.divide(matrix_nn1, matrix_nn1.sum(1, keepdims=True)))
+#
+# print("Precision", precision_nn1, "Recall", recall_nn1)
 
-recall_nn1 = np.diagonal(np.divide(matrix_nn1, matrix_nn1.sum(0, keepdims=True)))
+##
 
-precision_nn1 = np.diagonal(np.divide(matrix_nn1, matrix_nn1.sum(1, keepdims=True)))
-
-print("Precision", precision_nn1, "Recall", recall_nn1)
+# labels = pd.read_csv(os.path.join("Database", "labels", "labelsPreprocessingOriginalStrategy4.csv"))
+# labels = labels[labels["set"] == "train"]
+#
+# stats = pd.DataFrame({"percentage": labels["level"].value_counts(normalize=True)*100,
+#                       "count": labels["level"].value_counts()})
+#
+# stats

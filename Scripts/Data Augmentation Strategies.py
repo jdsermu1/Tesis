@@ -11,11 +11,13 @@ from imblearn.over_sampling import RandomOverSampler
 ##
 
 preprocessing = "adaptation"
-strategy = "strategy3"
+strategy = "strategy4"
 
 # strategy1 : 100 validation images per category, 312 test images per category, the rest of images are taken for
 # training without any augmentation strategy.
 # strategy2 : 100 validation images per category, 312 test images per category,1502 train images pero category
+# strategy3 : 100 validation images per category, 312 test images per category, the remaining images got to training
+# but the majority class is undersampled to 15000 images and the minority classes are oversampled to 15000 images
 ##
 
 labels_folder = os.path.join("..", "Database", "labels")
@@ -94,12 +96,36 @@ def strategy3():
 ##
 
 
+def strategy4():
+    test_size = 15600
+    validation_size = 5000
+    train_size = 15000
+    labels_train, labels_test_validation = train_test_split(labels, test_size=test_size+validation_size,
+                                                            stratify=labels["level"])
+    labels_validation, labels_test = train_test_split(labels_test_validation, test_size=test_size,
+                                                      stratify=labels_test_validation["level"])
+    rus = RandomUnderSampler(sampling_strategy={0: train_size})
+    ros = RandomOverSampler(sampling_strategy="not majority")
+    labels_train, _ = rus.fit_sample(labels_train, labels_train["level"])
+    labels_train, _ = ros.fit_sample(labels_train, labels_train["level"])
+    labels_train["set"] = "train"
+    labels_validation["set"] = "validation"
+    labels_test["set"] = "test"
+    labels_strategy = pd.concat([labels_train, labels_validation, labels_test])
+    return labels_strategy
+
+
+##
+
+
 if strategy == "strategy1":
     func = strategy1
 elif strategy == "strategy2":
     func = strategy2
 elif strategy == "strategy3":
     func = strategy3
+elif strategy == "strategy4":
+    func = strategy4
 else:
     func = strategy1
 final_labels = func()
