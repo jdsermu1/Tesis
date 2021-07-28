@@ -26,7 +26,7 @@ from imblearn.over_sampling import RandomOverSampler
 
 
 normalize = False
-preprocessing = "adaptationDenosing"
+preprocessing = "adaptationDenoising"
 input_size = 540
 strategy = "strategy4"
 backbone_name = "resnet34"

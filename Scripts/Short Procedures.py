@@ -180,3 +180,9 @@ from matplotlib import pyplot as plt
 # plt.show()
 
 
+##
+
+labels = pd.read_csv("Database/labels/labelsPreprocessingDenoising.csv")
+
+##
+print(len(labels))

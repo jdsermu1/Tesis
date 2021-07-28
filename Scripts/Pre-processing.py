@@ -203,11 +203,11 @@ for i in range(number_of_threads):
 
 for i in range(number_of_threads):
     threads[i].join()
-
+##
 
 if write_csv:
     list_dir = glob.glob(os.path.join(preprocessed_folder_kaggle, "**.jpeg"))
-    list_dir = [i[i.rfind(os.path.sep):-5] for i in list_dir]
+    list_dir = [i[i.rfind(os.path.sep)+1:-5] for i in list_dir]
     labels_preprocessing = labels[labels["image"].isin(list_dir)]
     labels_preprocessing.to_csv(os.path.join(labels_dir, f"labelsPreprocessing{preprocessing.capitalize()}.csv"),
                                 index=False)
