@@ -8,9 +8,9 @@ import glob
 
 ##
 
-number_of_threads = 6
-preprocessing = "original"
-write_csv = False
+number_of_threads = 15
+preprocessing = "denoising"
+write_csv = True
 
 
 ##
@@ -102,7 +102,7 @@ def adaptation_preprocess(image, desired_size=540, diameter=540, filter_size=9, 
     image = center_eye_bulb(image, x, y, r)
     image = set_eyebulb_diameter(image, diameter)
     image = substract_local_average(image, filter_size, diameter)
-    image = crop(image, image.shape[1]//2, image.shape[0]//2,max(image.shape[1]//2, image.shape[0]//2), percentage)
+    image = crop(image, image.shape[1]//2, image.shape[0]//2, max(image.shape[1]//2, image.shape[0]//2), percentage)
     image = add_padding(image)
     image = cv2.resize(image, (desired_size, desired_size), interpolation=cv2.INTER_NEAREST)
     return image
@@ -121,15 +121,68 @@ def original_preprocessing(img, scale=270):
     img = cv2.addWeighted(img, 4, cv2.GaussianBlur(img, (0, 0), scale / 30), -4, 128) * b + 128 * (1 - b)
     return img
 
+
+##
+
+def center_preprocessing(image, desired_size=540, diameter=540, percentage=.9, remove=30):
+    assert 2*remove <= desired_size
+    (x, y, r) = detect_xyr(image.copy())
+    image = center_eye_bulb(image, x, y, r)
+    image = set_eyebulb_diameter(image, diameter)
+    image = crop(image, image.shape[1]//2, image.shape[0]//2, max(image.shape[1]//2, image.shape[0]//2), percentage)
+    image = add_padding(image)
+    image = cv2.resize(image, (desired_size, desired_size), interpolation=cv2.INTER_NEAREST)
+    return image
+
+
+##
+
+def adaptation_denoising_preprocess(image, desired_size=540, diameter=540, filter_size=9, percentage=.9, remove=30):
+    assert 2*remove<=desired_size
+    (x, y, r) = detect_xyr(image.copy())
+    image = center_eye_bulb(image, x, y, r)
+    image = set_eyebulb_diameter(image, diameter)
+    image = cv2.fastNlMeansDenoisingColored(image.astype("uint8"), None)
+    image = substract_local_average(image, filter_size, diameter)
+    image = crop(image, image.shape[1]//2, image.shape[0]//2, max(image.shape[1]//2, image.shape[0]//2), percentage)
+    image = add_padding(image)
+    image = cv2.resize(image, (desired_size, desired_size), interpolation=cv2.INTER_NEAREST)
+    return image
+
+
+##
+
+def denoising_preprocess(image, desired_size=540, diameter=540, filter_size=9, percentage=.9, remove=30):
+    assert 2*remove<=desired_size
+    (x, y, r) = detect_xyr(image.copy())
+    image = center_eye_bulb(image, x, y, r)
+    image = set_eyebulb_diameter(image, diameter)
+    image = cv2.fastNlMeansDenoisingColored(image.astype("uint8"), None)
+    image = crop(image, image.shape[1]//2, image.shape[0]//2, max(image.shape[1]//2, image.shape[0]//2), percentage)
+    image = add_padding(image)
+    image = cv2.resize(image, (desired_size, desired_size), interpolation=cv2.INTER_NEAREST)
+    return image
+
 ##
 
 
 def apply_preprocessing(labels, number_threads, assigned):
     chosen_labels = labels.iloc[list(range(assigned, len(labels), number_threads))].copy()
+    if preprocessing == "adaptation":
+        func = adaptation_preprocess
+    elif preprocessing == "original":
+        func = original_preprocessing
+    elif preprocessing == "center":
+        func = center_preprocessing
+    elif preprocessing == "adaptationDenoising":
+        func = adaptation_denoising_preprocess
+    elif preprocessing == "denoising":
+        func = denoising_preprocess
+    else:
+        func = adaptation_preprocess
     for i in range(len(chosen_labels)):
         image_data = chosen_labels.iloc[i]
         image_path = os.path.join(images_folder_kaggle, image_data['image']+".jpeg")
-        func = adaptation_preprocess if preprocessing == "adaptation" else original_preprocessing
         try:
             img = cv2.imread(image_path)
             img = func(img)
@@ -156,7 +209,8 @@ if write_csv:
     list_dir = glob.glob(os.path.join(preprocessed_folder_kaggle, "**.jpeg"))
     list_dir = [i[i.rfind(os.path.sep):-5] for i in list_dir]
     labels_preprocessing = labels[labels["image"].isin(list_dir)]
-    labels_preprocessing.to_csv(os.path.join(labels_dir, f"labelsPreprocessing{preprocessing.capitalize()}.csv"), index=False)
+    labels_preprocessing.to_csv(os.path.join(labels_dir, f"labelsPreprocessing{preprocessing.capitalize()}.csv"),
+                                index=False)
 
 
 print("Acabo preprocesamiento")
