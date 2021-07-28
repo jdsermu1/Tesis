@@ -9,7 +9,7 @@ import glob
 ##
 
 number_of_threads = 15
-preprocessing = "denoising"
+preprocessing = "adaptationDenoising"
 write_csv = True
 
 

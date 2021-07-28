@@ -25,10 +25,10 @@ from imblearn.over_sampling import RandomOverSampler
 ##
 
 
-
-preprocessing = "adaptation"
-input_size = 312
-strategy = "strategy3"
+normalize = False
+preprocessing = "adaptationDenosing"
+input_size = 540
+strategy = "strategy4"
 backbone_name = "resnet34"
 freeze = False
 lr = 1e-3
@@ -40,6 +40,10 @@ dense = [1024, 512, 256]
 
 model_name = preprocessing + str(input_size) + strategy + backbone_name + str(freeze) + str(lr) + optimizer_name + \
              str(with_scheduler) + '-'.join(map(str, dense))
+
+if normalize:
+    model_name += "Normalize"
+
 ##
 random_seed = 5
 
@@ -47,10 +51,10 @@ init_epoch = 0
 
 best_loss = sys.float_info.max
 
-epochs = 15
+epochs = 10
 
 batch_sizes = {
-    "resnet34": 50,
+    "resnet34": 37,
     "resnet50": 95,
     "resnet101": 10
 }
@@ -204,7 +208,6 @@ class CustomDataset(Dataset):
 
 
 def build_data_loaders():
-    # Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
     array_train = [ToTensor()]
     array = [ToTensor()]
     if preprocessing == "original":
@@ -213,6 +216,9 @@ def build_data_loaders():
     if input_size != 540:
         array_train.append(Resize(input_size))
         array.append(Resize(input_size))
+    if normalize:
+        array_train.append(Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]))
+        array.append(Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]))
     array_train.append(RandomVerticalFlip(0.5))
     array_train.append(RandomHorizontalFlip(0.5))
     array_train.append(RandomRotation((0, 360)))
@@ -405,7 +411,8 @@ writer.add_hparams({
     "Optimizer": optimizer_name,
     "Using Scheduler": with_scheduler,
     "Input Size": input_size,
-    "Fully Connected ": '-'.join(map(str, dense))
+    "Fully Connected ": '-'.join(map(str, dense)),
+    "Normalize": normalize
 }, {
     "Best Loss": best_loss
 })
