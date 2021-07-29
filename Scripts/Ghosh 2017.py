@@ -2,7 +2,6 @@
 import random
 import sys
 from collections import OrderedDict
-import math
 import torch
 import os
 import pandas as pd
@@ -19,28 +18,46 @@ from torch.utils.tensorboard import SummaryWriter
 from datetime import datetime
 import torchvision
 from sklearn.metrics import precision_recall_fscore_support
+from sklearn.model_selection import train_test_split
+from imblearn.under_sampling import RandomUnderSampler
+from imblearn.over_sampling import RandomOverSampler
 
 ##
 
 
-
-preprocessing = "original"
+normalize = False
+preprocessing = "adaptationDenoising"
 input_size = 540
 strategy = "strategy4"
-backbone_name = "Li2019-1"
+backbone_name = "resnet34"
+freeze = False
 lr = 1e-3
 optimizer_name = "Adam"
+with_scheduler = True
+dense = [1024, 512, 256]
 
-model_name = preprocessing + str(input_size) + strategy + backbone_name + optimizer_name
+
+
+model_name = preprocessing + str(input_size) + strategy + backbone_name + str(freeze) + str(lr) + optimizer_name + \
+             str(with_scheduler) + '-'.join(map(str, dense))
+
+if normalize:
+    model_name += "Normalize"
+
 ##
+random_seed = 5
 
 init_epoch = 0
 
 best_loss = sys.float_info.max
 
-epochs = 65
+epochs = 10
 
-batch_size = 10
+batch_sizes = {
+    "resnet34": 37,
+    "resnet50": 95,
+    "resnet101": 10
+}
 
 num_classes = 5
 
@@ -51,7 +68,7 @@ database_folder = os.path.join("..", "Database")
 images_folder = os.path.join(database_folder, "preprocessing images", preprocessing)
 
 annotations_file = os.path.join(database_folder, "labels",
-                                f"labelsPreprocessing{preprocessing.capitalize()}{strategy.capitalize()}.csv")
+                                f"labelsPreprocessing{preprocessing.capitalize()}.csv")
 
 run = datetime.now().strftime("%d-%m-%Y %H:%M:%S")
 
@@ -62,10 +79,115 @@ model_path = os.path.join(database_folder, "models", model_name+".pt")
 ##
 
 
+def strategy1(labels):
+    size_validation = 100
+    size_test = 312
+    size_partition = size_test + size_validation
+    labels_strategy = pd.DataFrame({})
+    for c in range(5):
+        labels_c = labels[labels['level'] == c]
+        labels_train, labels_test_val = train_test_split(labels_c, test_size=size_partition, random_state=random_seed)
+        labels_train["set"] = "train"
+        labels_test, labels_validation = train_test_split(labels_test_val, test_size=size_validation,
+                                                          random_state=random_seed)
+        labels_test["set"] = "test"
+        labels_validation["set"] = "validation"
+        labels_strategy = pd.concat([labels_strategy, labels_validation, labels_test, labels_train])
+    return labels_strategy
+
+
+def strategy2(labels):
+    size_validation = 100
+    size_test = 312
+    size_train = 1502
+    size_partition = size_test + size_validation
+    labels_strategy = pd.DataFrame({})
+    for c in range(5):
+        labels_c = labels[labels['level'] == c]
+        labels_train, labels_test_val = train_test_split(labels_c, test_size=size_partition, random_state=random_seed)
+        if len(labels_train) > size_train:
+            labels_train, _ = train_test_split(labels_train, train_size=size_train, random_state=random_seed)
+        labels_train["set"] = "train"
+        labels_test, labels_validation = train_test_split(labels_test_val, test_size=size_validation,
+                                                          random_state=random_seed)
+        labels_test["set"] = "test"
+        labels_validation["set"] = "validation"
+        labels_strategy = pd.concat([labels_strategy, labels_validation, labels_test, labels_train])
+    return labels_strategy
+
+
+def strategy3(labels):
+    size_validation = 100
+    size_test = 312
+    size_train = 15000
+    size_partition = size_validation + size_test
+    labels_train = pd.DataFrame({})
+    labels_test = pd.DataFrame({})
+    labels_validation = pd.DataFrame({})
+    for c in range(5):
+        labels_c = labels[labels['level'] == c]
+        labels_train_c, labels_test_val_c = train_test_split(labels_c, test_size=size_partition,
+                                                             random_state=random_seed)
+        labels_validation_c, labels_test_c = train_test_split(labels_test_val_c, test_size=size_test,
+                                                              random_state=random_seed)
+        labels_train = pd.concat([labels_train, labels_train_c])
+        labels_test = pd.concat([labels_test, labels_test_c])
+        labels_validation = pd.concat([labels_validation, labels_validation_c])
+
+
+    rus = RandomUnderSampler(sampling_strategy={0: size_train}, random_state=random_seed)
+    ros = RandomOverSampler(sampling_strategy="not majority", random_state=random_seed)
+    labels_train, _ = rus.fit_sample(labels_train, labels_train["level"])
+    labels_train, _ = ros.fit_sample(labels_train, labels_train["level"])
+    labels_train["set"] = "train"
+    labels_test["set"] = "test"
+    labels_validation["set"] = "validation"
+    labels_strategy = pd.concat([labels_train, labels_validation, labels_test])
+    return labels_strategy
+
+
+def strategy4(labels):
+    test_size = 15600
+    validation_size = 5000
+    train_size = 15000
+    labels_train, labels_test_validation = train_test_split(labels, test_size=test_size+validation_size,
+                                                            stratify=labels["level"], random_state=random_seed)
+    labels_validation, labels_test = train_test_split(labels_test_validation, test_size=test_size,
+                                                      stratify=labels_test_validation["level"],
+                                                      random_state=random_seed)
+    rus = RandomUnderSampler(sampling_strategy={0: train_size}, random_state=random_seed)
+    ros = RandomOverSampler(sampling_strategy="not majority", random_state=random_seed)
+    labels_train, _ = rus.fit_sample(labels_train, labels_train["level"])
+    labels_train, _ = ros.fit_sample(labels_train, labels_train["level"])
+    labels_train["set"] = "train"
+    labels_validation["set"] = "validation"
+    labels_test["set"] = "test"
+    labels_strategy = pd.concat([labels_train, labels_validation, labels_test])
+    return labels_strategy
+
+
+if strategy == "strategy1":
+    func = strategy1
+elif strategy == "strategy2":
+    func = strategy2
+elif strategy == "strategy3":
+    func = strategy3
+elif strategy == "strategy4":
+    func = strategy4
+else:
+    func = strategy1
+labels_df = pd.read_csv(annotations_file)
+labels_df = func(labels_df)
+
+
+##
+
+
+
 class CustomDataset(Dataset):
-    def __init__(self, labels_file, img_dir, folder="train", transform=None, target_transform=None):
+    def __init__(self, labels, img_dir, folder="train", transform=None, target_transform=None):
         self.img_dir = img_dir
-        self.img_labels = pd.read_csv(labels_file)
+        self.img_labels = labels
         self.img_labels = self.img_labels[self.img_labels["set"] == folder]
         self.transform = transform
         self.target_transform = target_transform
@@ -86,7 +208,6 @@ class CustomDataset(Dataset):
 
 
 def build_data_loaders():
-    # Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
     array_train = [ToTensor()]
     array = [ToTensor()]
     if preprocessing == "original":
@@ -95,6 +216,9 @@ def build_data_loaders():
     if input_size != 540:
         array_train.append(Resize(input_size))
         array.append(Resize(input_size))
+    if normalize:
+        array_train.append(Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]))
+        array.append(Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]))
     array_train.append(RandomVerticalFlip(0.5))
     array_train.append(RandomHorizontalFlip(0.5))
     array_train.append(RandomRotation((0, 360)))
@@ -103,70 +227,31 @@ def build_data_loaders():
 
     preprocess = Compose(array)
 
-    train_dataset = CustomDataset(annotations_file, images_folder, transform=preprocess_train)
-    validation_dataset = CustomDataset(annotations_file, images_folder, folder="validation", transform=preprocess)
-    test_dataset = CustomDataset(annotations_file, images_folder, folder="test", transform=preprocess)
+    train_dataset = CustomDataset(labels_df, images_folder, transform=preprocess_train)
+    validation_dataset = CustomDataset(labels_df, images_folder, folder="validation", transform=preprocess)
+    test_dataset = CustomDataset(labels_df, images_folder, folder="test", transform=preprocess)
 
-    return DataLoader(train_dataset, batch_size=batch_size, shuffle=True), \
-           DataLoader(validation_dataset, batch_size=batch_size, shuffle=True), \
-           DataLoader(test_dataset, batch_size=batch_size, shuffle=True)
+    return DataLoader(train_dataset, batch_size=batch_sizes.get(backbone_name, 10), shuffle=True), \
+           DataLoader(validation_dataset, batch_size=batch_sizes.get(backbone_name, 10), shuffle=True), \
+           DataLoader(test_dataset, batch_size=batch_sizes.get(backbone_name, 10), shuffle=True)
 
 
 ##
-class BaseBlock(nn.Module):
-    def __init__(self, in_channels, out_channels, kernel_size, fractional, dropout, padding="same",
-                 alpha=0.333, output_ratio=1.0/1.8):
-        super(BaseBlock, self).__init__()
-        self.conv2d = nn.Conv2d(in_channels, out_channels, kernel_size, padding=padding)
-        self.leakyRelu = nn.LeakyReLU(negative_slope=alpha)
-        self.fractional = fractional
-        self.p = dropout
-        if self.fractional:
-            self.fractionalMaxPooling = nn.FractionalMaxPool2d(kernel_size, output_ratio=output_ratio)
-        if self.p > 0.0:
-            self.dropout = nn.Dropout2d(p=dropout)
 
-    def forward(self, x):
-        x = self.conv2d(x)
-        x = self.leakyRelu(x)
-        if self.fractional:
-            x = self.fractionalMaxPooling(x)
-        if self.p > 0.0:
-            x = self.dropout(x)
-        return x
+def construct_model(pretrained=True):
+    backbone = getattr(models, backbone_name)(pretrained=pretrained)
+    if freeze:
+        for name, param in backbone.named_parameters():
+            param.requires_grad = False
+    if backbone_name.startswith("resnet"):
+        fc = []
+        for i, layer in enumerate(dense):
+            fc.append((f"linear{i}", nn.Linear(backbone.fc.in_features if i == 0 else dense[i-1], layer)))
+            fc.append((f"relu{i}", nn.ReLU()))
 
-
-
-
-class ModelLi2019(nn.Module):
-    def __init__(self, blocks):
-        super(ModelLi2019, self).__init__()
-        array = []
-        for i, block in enumerate(blocks):
-            in_channels = 3 if i == 0 else blocks[i-1][0]
-            array.append((f"baseBlock{i}", BaseBlock(in_channels, block[0], block[1],  block[2], block[3])))
-        self.features = nn.Sequential(OrderedDict(array))
-        self.linear = nn.Linear(1424, 5)
-        self.logSoftmax = nn.LogSoftmax(dim=1)
-
-    def forward(self, x):
-        x = self.features(x)
-        x = torch.flatten(x, 1)
-        x = self.linear(x)
-        x = self.logSoftmax(x)
-        return x
-
-
-def modelLi2019_1():
-    blocks = [(32, 5, True, -1), (64, 3, True, -1), (96, 3, True, -1), (128, 3, True, -1),  (160, 3, True, -1),
-              (192, 3, True, -1), (224, 3, True, -1), (256, 3, True, 32.0/352), (288, 2, True, 32.0/384),
-              (320, 3, False, 64.0/416), (356, 1, False, 64.0/448)]
-    return ModelLi2019(blocks)
-
-
-def construct_model():
-
-    backbone = modelLi2019_1()
+        fc.append((f'linear{len(dense)}', nn.Linear(dense[-1], num_classes)))
+        fc.append((f"logsoftmax", nn.LogSoftmax(dim=1)))
+        backbone.fc = nn.Sequential(OrderedDict(fc))
 
     backbone = backbone.to(device)
 
@@ -186,7 +271,8 @@ def construct_model():
 
 train_dataloader, validation_dataloader, test_dataloader = build_data_loaders()
 model, optimizer = construct_model()
-scheduler = optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lambda ep: math.exp(-ep*0.05))
+if with_scheduler:
+    scheduler = optim.lr_scheduler.StepLR(optimizer, 3, gamma=0.1, verbose=True)
 criterion = nn.NLLLoss()
 
 ##
@@ -195,14 +281,15 @@ if os.path.exists(model_path):
     checkpoint = torch.load(model_path)
     model.load_state_dict(checkpoint['model_state_dict'])
     optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-    scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
+    if with_scheduler:
+        scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
     init_epoch = checkpoint['epoch'] + 1
     best_loss = checkpoint['best_loss']
 
 
 ##
 
-images, labels = iter(train_dataloader).next()
+images, _ = iter(train_dataloader).next()
 img_grid = torchvision.utils.make_grid(images)
 writer.add_image('train_example', img_grid)
 
@@ -275,10 +362,10 @@ def validation(epoch):
     print(f"Validation Error: \n Accuracy: {(100 * correct):>0.1f}%, Avg loss: {test_loss:>8f} \n")
     writer.add_scalar('Loss/Validation',
                       test_loss,
-                      epoch + 1)
+                      epoch)
     writer.add_scalar('Accuracy/Validation',
                       correct * 100,
-                      epoch + 1)
+                      epoch)
     precision, recall, f1_score, _ = precision_recall_fscore_support(all_labels,
                                                                      all_predictions, labels=[0, 1, 2, 3, 4])
     for i in range(5):
@@ -294,9 +381,14 @@ def validation(epoch):
 
     if test_loss < best_loss:
         best_loss = test_loss
-        dict_save = {'epoch': epoch, 'model_state_dict': model.state_dict(),
-                     'optimizer_state_dict': optimizer.state_dict(), 'best_loss': best_loss,
-                     'scheduler_state_dict': scheduler.state_dict()}
+        dict_save = {
+            'epoch': epoch,
+            'model_state_dict': model.state_dict(),
+            'optimizer_state_dict': optimizer.state_dict(),
+            'best_loss': best_loss,
+        }
+        if with_scheduler:
+            dict_save['scheduler_state_dict'] = scheduler.state_dict()
         torch.save(dict_save, model_path)
 
 
@@ -306,16 +398,21 @@ for t in range(init_epoch, epochs):
     print(f"Epoch {t}\n-------------------------------")
     train(t)
     validation(t)
-    scheduler.step()
+    if with_scheduler:
+        scheduler.step()
 print("Done!")
 
 writer.add_hparams({
     "Preprocessing": preprocessing,
     "Data augmentation strategy": strategy,
     "Backbone": backbone_name,
+    "Weights Frozen": freeze,
     "Learning rate": lr,
     "Optimizer": optimizer_name,
+    "Using Scheduler": with_scheduler,
     "Input Size": input_size,
+    "Fully Connected ": '-'.join(map(str, dense)),
+    "Normalize": normalize
 }, {
     "Best Loss": best_loss
 })
