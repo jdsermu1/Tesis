@@ -19,6 +19,9 @@ from torch.utils.tensorboard import SummaryWriter
 from datetime import datetime
 import torchvision
 from sklearn.metrics import precision_recall_fscore_support
+from sklearn.model_selection import train_test_split
+from imblearn.under_sampling import RandomUnderSampler
+from imblearn.over_sampling import RandomOverSampler
 
 ##
 
@@ -33,6 +36,7 @@ optimizer_name = "Adam"
 
 model_name = preprocessing + str(input_size) + strategy + backbone_name + optimizer_name
 ##
+random_seed = 5
 
 init_epoch = 0
 
@@ -40,7 +44,7 @@ best_loss = sys.float_info.max
 
 epochs = 65
 
-batch_size = 10
+batch_size = 35
 
 num_classes = 5
 
@@ -51,7 +55,7 @@ database_folder = os.path.join("..", "Database")
 images_folder = os.path.join(database_folder, "preprocessing images", preprocessing)
 
 annotations_file = os.path.join(database_folder, "labels",
-                                f"labelsPreprocessing{preprocessing.capitalize()}{strategy.capitalize()}.csv")
+                                f"labelsPreprocessing{preprocessing.capitalize()}.csv")
 
 run = datetime.now().strftime("%d-%m-%Y %H:%M:%S")
 
@@ -62,10 +66,113 @@ model_path = os.path.join(database_folder, "models", model_name+".pt")
 ##
 
 
+def strategy1(labels):
+    size_validation = 100
+    size_test = 312
+    size_partition = size_test + size_validation
+    labels_strategy = pd.DataFrame({})
+    for c in range(5):
+        labels_c = labels[labels['level'] == c]
+        labels_train, labels_test_val = train_test_split(labels_c, test_size=size_partition, random_state=random_seed)
+        labels_train["set"] = "train"
+        labels_test, labels_validation = train_test_split(labels_test_val, test_size=size_validation,
+                                                          random_state=random_seed)
+        labels_test["set"] = "test"
+        labels_validation["set"] = "validation"
+        labels_strategy = pd.concat([labels_strategy, labels_validation, labels_test, labels_train])
+    return labels_strategy
+
+
+def strategy2(labels):
+    size_validation = 100
+    size_test = 312
+    size_train = 1502
+    size_partition = size_test + size_validation
+    labels_strategy = pd.DataFrame({})
+    for c in range(5):
+        labels_c = labels[labels['level'] == c]
+        labels_train, labels_test_val = train_test_split(labels_c, test_size=size_partition, random_state=random_seed)
+        if len(labels_train) > size_train:
+            labels_train, _ = train_test_split(labels_train, train_size=size_train, random_state=random_seed)
+        labels_train["set"] = "train"
+        labels_test, labels_validation = train_test_split(labels_test_val, test_size=size_validation,
+                                                          random_state=random_seed)
+        labels_test["set"] = "test"
+        labels_validation["set"] = "validation"
+        labels_strategy = pd.concat([labels_strategy, labels_validation, labels_test, labels_train])
+    return labels_strategy
+
+
+def strategy3(labels):
+    size_validation = 100
+    size_test = 312
+    size_train = 15000
+    size_partition = size_validation + size_test
+    labels_train = pd.DataFrame({})
+    labels_test = pd.DataFrame({})
+    labels_validation = pd.DataFrame({})
+    for c in range(5):
+        labels_c = labels[labels['level'] == c]
+        labels_train_c, labels_test_val_c = train_test_split(labels_c, test_size=size_partition,
+                                                             random_state=random_seed)
+        labels_validation_c, labels_test_c = train_test_split(labels_test_val_c, test_size=size_test,
+                                                              random_state=random_seed)
+        labels_train = pd.concat([labels_train, labels_train_c])
+        labels_test = pd.concat([labels_test, labels_test_c])
+        labels_validation = pd.concat([labels_validation, labels_validation_c])
+
+
+    rus = RandomUnderSampler(sampling_strategy={0: size_train}, random_state=random_seed)
+    ros = RandomOverSampler(sampling_strategy="not majority", random_state=random_seed)
+    labels_train, _ = rus.fit_sample(labels_train, labels_train["level"])
+    labels_train, _ = ros.fit_sample(labels_train, labels_train["level"])
+    labels_train["set"] = "train"
+    labels_test["set"] = "test"
+    labels_validation["set"] = "validation"
+    labels_strategy = pd.concat([labels_train, labels_validation, labels_test])
+    return labels_strategy
+
+
+def strategy4(labels):
+    test_size = 15600
+    validation_size = 5000
+    train_size = 15000
+    labels_train, labels_test_validation = train_test_split(labels, test_size=test_size+validation_size,
+                                                            stratify=labels["level"], random_state=random_seed)
+    labels_validation, labels_test = train_test_split(labels_test_validation, test_size=test_size,
+                                                      stratify=labels_test_validation["level"],
+                                                      random_state=random_seed)
+    rus = RandomUnderSampler(sampling_strategy={0: train_size}, random_state=random_seed)
+    ros = RandomOverSampler(sampling_strategy="not majority", random_state=random_seed)
+    labels_train, _ = rus.fit_sample(labels_train, labels_train["level"])
+    labels_train, _ = ros.fit_sample(labels_train, labels_train["level"])
+    labels_train["set"] = "train"
+    labels_validation["set"] = "validation"
+    labels_test["set"] = "test"
+    labels_strategy = pd.concat([labels_train, labels_validation, labels_test])
+    return labels_strategy
+
+
+if strategy == "strategy1":
+    func = strategy1
+elif strategy == "strategy2":
+    func = strategy2
+elif strategy == "strategy3":
+    func = strategy3
+elif strategy == "strategy4":
+    func = strategy4
+else:
+    func = strategy1
+labels_df = pd.read_csv(annotations_file)
+labels_df = func(labels_df)
+
+##
+
+
 class CustomDataset(Dataset):
-    def __init__(self, labels_file, img_dir, folder="train", transform=None, target_transform=None):
+    def __init__(self, labels, img_dir, folder="train", transform=None, target_transform=None):
         self.img_dir = img_dir
-        self.img_labels = pd.read_csv(labels_file)
+        self.img_labels = labels
         self.img_labels = self.img_labels[self.img_labels["set"] == folder]
         self.transform = transform
         self.target_transform = target_transform
@@ -86,7 +193,6 @@ class CustomDataset(Dataset):
 
 
 def build_data_loaders():
-    # Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
     array_train = [ToTensor()]
     array = [ToTensor()]
     if preprocessing == "original":
@@ -103,13 +209,14 @@ def build_data_loaders():
 
     preprocess = Compose(array)
 
-    train_dataset = CustomDataset(annotations_file, images_folder, transform=preprocess_train)
-    validation_dataset = CustomDataset(annotations_file, images_folder, folder="validation", transform=preprocess)
-    test_dataset = CustomDataset(annotations_file, images_folder, folder="test", transform=preprocess)
+    train_dataset = CustomDataset(labels_df, images_folder, transform=preprocess_train)
+    validation_dataset = CustomDataset(labels_df, images_folder, folder="validation", transform=preprocess)
+    test_dataset = CustomDataset(labels_df, images_folder, folder="test", transform=preprocess)
 
     return DataLoader(train_dataset, batch_size=batch_size, shuffle=True), \
            DataLoader(validation_dataset, batch_size=batch_size, shuffle=True), \
            DataLoader(test_dataset, batch_size=batch_size, shuffle=True)
+
 
 
 ##
