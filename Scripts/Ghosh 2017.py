@@ -25,39 +25,28 @@ from imblearn.over_sampling import RandomOverSampler
 ##
 
 
-normalize = False
-preprocessing = "adaptationDenoising"
-input_size = 540
+preprocessing = "denoising"
+input_size = 512
 strategy = "strategy4"
-backbone_name = "resnet34"
-freeze = False
-lr = 1e-3
+backbone_name = "Ghosh2017"
 optimizer_name = "Adam"
-with_scheduler = True
-dense = [1024, 512, 256]
 
+model_name = preprocessing + str(input_size) + strategy + backbone_name + optimizer_name
 
-
-model_name = preprocessing + str(input_size) + strategy + backbone_name + str(freeze) + str(lr) + optimizer_name + \
-             str(with_scheduler) + '-'.join(map(str, dense))
-
-if normalize:
-    model_name += "Normalize"
 
 ##
+
 random_seed = 5
 
 init_epoch = 0
 
 best_loss = sys.float_info.max
 
-epochs = 10
+epochs = 250
 
-batch_sizes = {
-    "resnet34": 37,
-    "resnet50": 95,
-    "resnet101": 10
-}
+batch_size = 150
+
+lr = 3e-3
 
 num_classes = 5
 
@@ -216,9 +205,6 @@ def build_data_loaders():
     if input_size != 540:
         array_train.append(Resize(input_size))
         array.append(Resize(input_size))
-    if normalize:
-        array_train.append(Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]))
-        array.append(Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]))
     array_train.append(RandomVerticalFlip(0.5))
     array_train.append(RandomHorizontalFlip(0.5))
     array_train.append(RandomRotation((0, 360)))
@@ -231,29 +217,98 @@ def build_data_loaders():
     validation_dataset = CustomDataset(labels_df, images_folder, folder="validation", transform=preprocess)
     test_dataset = CustomDataset(labels_df, images_folder, folder="test", transform=preprocess)
 
-    return DataLoader(train_dataset, batch_size=batch_sizes.get(backbone_name, 10), shuffle=True), \
-           DataLoader(validation_dataset, batch_size=batch_sizes.get(backbone_name, 10), shuffle=True), \
-           DataLoader(test_dataset, batch_size=batch_sizes.get(backbone_name, 10), shuffle=True)
+    return DataLoader(train_dataset, batch_size=batch_size, shuffle=True), \
+           DataLoader(validation_dataset, batch_size=batch_size, shuffle=True), \
+           DataLoader(test_dataset, batch_size=batch_size, shuffle=True)
 
 
 ##
 
+class Maxout(nn.Module):
+
+    def __init__(self, d_in, d_out, pool_size):
+        super().__init__()
+        self.d_in, self.d_out, self.pool_size = d_in, d_out, pool_size
+        self.lin = nn.Linear(d_in, d_out * pool_size)
+
+
+    def forward(self, inputs):
+        shape = list(inputs.size())
+        shape[-1] = self.d_out
+        shape.append(self.pool_size)
+        max_dim = len(shape) - 1
+        out = self.lin(inputs)
+        m, i = out.view(*shape).max(max_dim)
+        return m
+
+
+class BaseModelGhosh2017(nn.Module):
+
+    def weights_init(self, m):
+        if isinstance(m, nn.Conv2d) or isinstance(m, nn.Linear):
+            torch.nn.init.xavier_normal_(m.weight)
+
+    def __init__(self):
+        super(BaseModelGhosh2017, self).__init__()
+        self.features = nn.Sequential(
+            nn.Conv2d(3, 32, 7, stride=2, padding=2),
+            nn.LeakyReLU(negative_slope=0.01),
+            nn.MaxPool2d(2),
+            nn.Conv2d(32, 32, 3, stride=1, padding=1),
+            nn.LeakyReLU(negative_slope=0.01),
+            nn.Conv2d(32, 32, 3, stride=1, padding=1),
+            nn.LeakyReLU(negative_slope=0.01),
+            nn.MaxPool2d(2),
+            nn.Conv2d(32, 64, 3, stride=1, padding=1),
+            nn.LeakyReLU(negative_slope=0.01),
+            nn.Conv2d(64, 64, 3, stride=1, padding=1),
+            nn.LeakyReLU(negative_slope=0.01),
+            nn.MaxPool2d(2),
+            nn.Conv2d(64, 128, 3, stride=1, padding=1),
+            nn.LeakyReLU(negative_slope=0.01),
+            nn.Conv2d(128, 128, 3, stride=1, padding=1),
+            nn.LeakyReLU(negative_slope=0.01),
+            nn.Conv2d(128, 128, 3, stride=1, padding=1),
+            nn.LeakyReLU(negative_slope=0.01),
+            nn.Conv2d(128, 128, 3, stride=1, padding=1),
+            nn.LeakyReLU(negative_slope=0.01),
+            nn.MaxPool2d(2),
+            nn.Conv2d(128, 256, 3, stride=1, padding=1),
+            nn.LeakyReLU(negative_slope=0.01),
+            nn.Conv2d(256, 256, 3, stride=1, padding=1),
+            nn.LeakyReLU(negative_slope=0.01),
+            nn.Conv2d(256, 256, 3, stride=1, padding=1),
+            nn.LeakyReLU(negative_slope=0.01),
+            nn.Conv2d(256, 256, 3, stride=1, padding=1),
+            nn.LeakyReLU(negative_slope=0.01),
+            nn.MaxPool2d(2),
+            nn.Dropout2d(),
+        )
+        self.fc = nn.Sequential(
+            nn.Flatten(),
+            Maxout(256*7*7, 512, 2),
+            nn.Dropout(),
+            Maxout(512, 512, 2),
+            nn.Dropout(),
+            nn.Linear(512, 10),
+            nn.LeakyReLU(negative_slope=0.01),
+        )
+        self.linear = nn.Linear(10, 5)
+        self.logSoftmax = nn.LogSoftmax(dim=1)
+        nn.init.xavier_normal_(self.linear.weight)
+        self.features.apply(self.weights_init)
+        self.fc.apply(self.weights_init)
+
+    def forward(self, x):
+        x = self.features(x)
+        x = self.fc(x)
+        x = self.linear(x)
+        x = self.logSoftmax(x)
+        return x
+
+
 def construct_model(pretrained=True):
-    backbone = getattr(models, backbone_name)(pretrained=pretrained)
-    if freeze:
-        for name, param in backbone.named_parameters():
-            param.requires_grad = False
-    if backbone_name.startswith("resnet"):
-        fc = []
-        for i, layer in enumerate(dense):
-            fc.append((f"linear{i}", nn.Linear(backbone.fc.in_features if i == 0 else dense[i-1], layer)))
-            fc.append((f"relu{i}", nn.ReLU()))
-
-        fc.append((f'linear{len(dense)}', nn.Linear(dense[-1], num_classes)))
-        fc.append((f"logsoftmax", nn.LogSoftmax(dim=1)))
-        backbone.fc = nn.Sequential(OrderedDict(fc))
-
-    backbone = backbone.to(device)
+    backbone = BaseModelGhosh2017().to(device)
 
     if optimizer_name == "Adam":
         opt = optim.Adam(backbone.parameters(), lr=lr)
@@ -271,8 +326,7 @@ def construct_model(pretrained=True):
 
 train_dataloader, validation_dataloader, test_dataloader = build_data_loaders()
 model, optimizer = construct_model()
-if with_scheduler:
-    scheduler = optim.lr_scheduler.StepLR(optimizer, 3, gamma=0.1, verbose=True)
+scheduler = optim.lr_scheduler.MultiStepLR(optimizer, milestones=[150, 220], gamma=0.1)
 criterion = nn.NLLLoss()
 
 ##
@@ -281,8 +335,7 @@ if os.path.exists(model_path):
     checkpoint = torch.load(model_path)
     model.load_state_dict(checkpoint['model_state_dict'])
     optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-    if with_scheduler:
-        scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
+    scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
     init_epoch = checkpoint['epoch'] + 1
     best_loss = checkpoint['best_loss']
 
@@ -292,7 +345,6 @@ if os.path.exists(model_path):
 images, _ = iter(train_dataloader).next()
 img_grid = torchvision.utils.make_grid(images)
 writer.add_image('train_example', img_grid)
-
 
 ##
 
@@ -381,14 +433,9 @@ def validation(epoch):
 
     if test_loss < best_loss:
         best_loss = test_loss
-        dict_save = {
-            'epoch': epoch,
-            'model_state_dict': model.state_dict(),
-            'optimizer_state_dict': optimizer.state_dict(),
-            'best_loss': best_loss,
-        }
-        if with_scheduler:
-            dict_save['scheduler_state_dict'] = scheduler.state_dict()
+        dict_save = {'epoch': epoch, 'model_state_dict': model.state_dict(),
+                     'optimizer_state_dict': optimizer.state_dict(), 'best_loss': best_loss,
+                     'scheduler_state_dict': scheduler.state_dict()}
         torch.save(dict_save, model_path)
 
 
@@ -398,21 +445,16 @@ for t in range(init_epoch, epochs):
     print(f"Epoch {t}\n-------------------------------")
     train(t)
     validation(t)
-    if with_scheduler:
-        scheduler.step()
+    scheduler.step()
 print("Done!")
 
 writer.add_hparams({
     "Preprocessing": preprocessing,
     "Data augmentation strategy": strategy,
     "Backbone": backbone_name,
-    "Weights Frozen": freeze,
     "Learning rate": lr,
     "Optimizer": optimizer_name,
-    "Using Scheduler": with_scheduler,
     "Input Size": input_size,
-    "Fully Connected ": '-'.join(map(str, dense)),
-    "Normalize": normalize
 }, {
     "Best Loss": best_loss
 })
