@@ -1,12 +1,17 @@
 ##
 
 import os
+from matplotlib import pyplot as plt
 import numpy as np
 import pandas as pd
 import cv2
 import glob
 import random
 from matplotlib import pyplot as plt
+from sklearn.utils.class_weight import compute_class_weight
+from sklearn.model_selection import train_test_split
+from imblearn.under_sampling import RandomUnderSampler
+from imblearn.over_sampling import RandomOverSampler
 
 ##
 # Join trainLabels.csv and testLabels.csv and create labels.csv. All annotation should appear in this file even if some
@@ -24,16 +29,104 @@ from matplotlib import pyplot as plt
 #
 # df_labels.to_csv(os.path.join(labels_folder, "labels.csv"), index=False)
 
-##
+#
 # Find out distribution of labels in classes
 
-# labels = pd.read_csv(os.path.join("Database", "labels", "labels.csv"))
+# labels = pd.read_csv(os.path.join("..", "Database", "labels", "labels.csv"))
+#
+#
+# def strategy4(labels):
+#     test_size = 15600
+#     validation_size = 5000
+#     train_size = 15000
+#     labels_train, labels_test_validation = train_test_split(labels, test_size=test_size+validation_size,
+#                                                             stratify=labels["level"], random_state=5)
+#     labels_validation, labels_test = train_test_split(labels_test_validation, test_size=test_size,
+#                                                       stratify=labels_test_validation["level"],
+#                                                       random_state=5)
+#     rus = RandomUnderSampler(sampling_strategy={0: train_size}, random_state=5)
+#     ros = RandomOverSampler(sampling_strategy="not majority", random_state=5)
+#     labels_train, _ = rus.fit_sample(labels_train, labels_train["level"])
+#     labels_train, _ = ros.fit_sample(labels_train, labels_train["level"])
+#     labels_train["set"] = "train"
+#     labels_validation["set"] = "validation"
+#     labels_test["set"] = "test"
+#     labels_strategy = pd.concat([labels_train, labels_validation, labels_test])
+#     return labels_strategy
+#
+#
+#
+# labels = strategy4(labels)
+#
+# labels = labels[labels["set"] == "validation"]
 #
 # stats = pd.DataFrame({"percentage": labels["level"].value_counts(normalize=True)*100,
 #                       "count": labels["level"].value_counts()})
 #
-# stats
+# print(stats)
 
+
+## Plot Dense
+
+# data1 = pd.read_csv(os.path.join("Database", "graphs", "O_3_34_540_512-256-128-64.csv"))
+# data1 = data1[data1["Set"]=="validation"]
+# data2 = pd.read_csv(os.path.join("Database", "graphs", "O_3_34_540_1024-512-256.csv"))
+# data2 = data2[data2["Set"]=="validation"]
+#
+# plt.plot(data1[data1["Label"]=="loss"]["Step"], data1[data1["Label"] == "loss"]["Value"], label="512-256-128-64")
+#
+# plt.plot(data2[data2["Label"]=="loss"]["Step"], data2[data2["Label"] == "loss"]["Value"], label="1024-512-256")
+#
+# plt.xlabel("Epoch")
+# plt.ylabel("Loss")
+# plt.grid()
+# plt.legend()
+#
+# plt.show()
+
+## Plot
+
+# data1 = pd.read_csv(os.path.join("Database", "graphs", "224.csv"))
+# data2 = pd.read_csv(os.path.join("Database", "graphs", "256.csv"))
+# data3 = pd.read_csv(os.path.join("Database", "graphs", "312.csv"))
+# data4 = pd.read_csv(os.path.join("Database", "graphs", "540.csv"))
+#
+# label = "Accuracy"
+#
+# plt.plot(data1["Step"], data1[label], label="224")
+# plt.plot(data2["Step"], data2[label], label="256")
+# plt.plot(data3["Step"], data3[label], label="312")
+# plt.plot(data4["Step"], data4[label], label="540")
+#
+# plt.xlabel("Epoch")
+# plt.ylabel(label)
+# plt.grid()
+# plt.legend()
+#
+# plt.show()
+
+## Plot
+
+# level = 50
+#
+# data1 = pd.read_csv(os.path.join("Database", "graphs", f"resnet{str(level)}-original.csv"))
+# data2 = pd.read_csv(os.path.join("Database", "graphs", f"resnet{str(level)}-adaptation.csv"))
+# # data3 = pd.read_csv(os.path.join("Database", "graphs", f"resnet{str(level)}-denoising.csv"))
+# data4 = pd.read_csv(os.path.join("Database", "graphs", f"resnet{str(level)}-adaptationDenoising.csv"))
+#
+# label = "ACA"
+#
+# plt.plot(data1["Step"], data1[label], label="original")
+# plt.plot(data2["Step"], data2[label], label="adaptation")
+# # plt.plot(data3["Step"], data3[label], label="denoising")
+# plt.plot(data4["Step"], data4[label], label="adaptationDenoising")
+#
+# plt.xlabel("Epoch")
+# plt.ylabel(label)
+# plt.grid()
+# plt.legend()
+#
+# plt.show()
 
 ##
 # Compare results Li 2019 get recall and precision
@@ -50,6 +143,22 @@ from matplotlib import pyplot as plt
 # precision_nn1 = np.diagonal(np.divide(matrix_nn1, matrix_nn1.sum(1, keepdims=True)))
 #
 # print("Precision", precision_nn1, "Recall", recall_nn1)
+
+##
+# Find Random Image
+#
+
+# labels = pd.read_csv(os.path.join("..", "Database", "labels", "labels.csv"))
+#
+# labels = labels[labels["level"] == 4]
+#
+# print(labels.sample())
+
+##
+
+# labels = pd.read_csv(os.path.join("..", "Database", "labels", "labels.csv"))
+#
+# print(compute_class_weight(class_weight="balanced", classes=[0, 1, 2, 3, 4], y=labels["level"]))
 
 ##
 
@@ -180,9 +289,9 @@ from matplotlib import pyplot as plt
 # plt.show()
 
 
-##
-
-labels = pd.read_csv("Database/labels/labelsPreprocessingDenoising.csv")
-
-##
-print(len(labels))
+# ##
+#
+# labels = pd.read_csv("Database/labels/labelsPreprocessingDenoising.csv")
+#
+# ##
+# print(len(labels))
