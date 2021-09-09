@@ -1,1 +1,1 @@
-Tesis
+A lo largo de este trabajo se busca crear una clasificador de retinopatia diabetica basandose en la base de datos provista por Kaggle en 2015. Adicionalmente, si intenta recrear los resultado obtenidos por algunos papers y por el ganador de la competencia. 
