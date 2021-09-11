@@ -16,7 +16,7 @@ from Utils import build_data_loaders, construct_optimizer
 
 
 normalize = False
-preprocessing = "original"
+preprocessing = "denoising"
 input_size = 540
 strategy = "strategy4"
 lr = 1e-3
@@ -38,7 +38,7 @@ useSaved = False
 ##
 
 database_folder = os.path.join("..", "Database")
-images_folder = os.path.join(database_folder, "preprocessing images", preprocessing)
+images_folder = os.path.join(database_folder, "images")
 annotations_file = os.path.join(database_folder, "labels",
                                 f"labelsPreprocessing{preprocessing.capitalize()}.csv")
 run = datetime.now().strftime("%d-%m-%Y %H:%M:%S")
@@ -54,7 +54,8 @@ train_dataloader, validation_dataloader, _ = build_data_loaders(preprocessing, i
                                                                 labels_df, images_folder)
 modelGenerator = ModelGenerator(device, num_classes)
 # model, model_name = modelGenerator.resnet("resnet50", True, False, [1024, 512, 256])  # modelGenerator.li2019(1)
-model, model_name = modelGenerator.li2019(2)
+# model, model_name = modelGenerator.li2019(2)
+model, model_name = modelGenerator.ghosh2017()
 
 optimizer = construct_optimizer(model, optimizer_name, lr)
 
@@ -180,16 +181,17 @@ for t in range(init_epoch, epochs):
         write_scalars("Validation", validation_metrics, t)
     if validation_metrics["loss"] < best_loss:
         best_loss = validation_metrics["loss"]
-        dict_save = {
-            'epoch': t,
-            'model_state_dict': model.state_dict(),
-            'optimizer_state_dict': optimizer.state_dict(),
-            'best_loss': best_loss,
-            'run': run
-        }
-        if with_scheduler:
-            dict_save['scheduler_state_dict'] = scheduler.state_dict()
-        torch.save(dict_save, model_path)
+        if history:
+            dict_save = {
+                'epoch': t,
+                'model_state_dict': model.state_dict(),
+                'optimizer_state_dict': optimizer.state_dict(),
+                'best_loss': best_loss,
+                'run': run
+            }
+            if with_scheduler:
+                dict_save['scheduler_state_dict'] = scheduler.state_dict()
+            torch.save(dict_save, model_path)
     elif with_scheduler:
         scheduler.step()
 

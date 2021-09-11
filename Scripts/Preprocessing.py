@@ -1,25 +1,8 @@
 ##
 
-import cv2, numpy, os
-import pandas as pd
-from threading import Thread
+import cv2
 import numpy as np
-import glob
 
-##
-
-number_of_threads = 15
-preprocessing = "adaptationDenoising"
-write_csv = True
-
-
-##
-
-db_folder_kaggle = os.path.join('..', "Database")
-images_folder_kaggle = os.path.join(db_folder_kaggle, "images")
-preprocessed_folder_kaggle = os.path.join(db_folder_kaggle, "preprocessing images", preprocessing)
-labels_dir = os.path.join(db_folder_kaggle, "labels")
-labels = pd.read_csv(os.path.join(labels_dir, "labels.csv"))
 
 ##
 
@@ -116,7 +99,7 @@ def original_preprocessing(img, scale=270):
     r = (x > x.mean() / 10).sum() / 2
     s = scale * 1.0 / r
     img = cv2.resize(img, (0, 0), fx=s, fy=s)
-    b = numpy.zeros(img.shape)
+    b = np.zeros(img.shape)
     cv2.circle(b, (img.shape[1] // 2, img.shape[0] // 2), int(scale * 0.9), (1, 1, 1), -1, 8, 0)
     img = cv2.addWeighted(img, 4, cv2.GaussianBlur(img, (0, 0), scale / 30), -4, 128) * b + 128 * (1 - b)
     return img
@@ -166,8 +149,7 @@ def denoising_preprocess(image, desired_size=540, diameter=540, filter_size=9, p
 ##
 
 
-def apply_preprocessing(labels, number_threads, assigned):
-    chosen_labels = labels.iloc[list(range(assigned, len(labels), number_threads))].copy()
+def apply_preprocessing(preprocessing):
     if preprocessing == "adaptation":
         func = adaptation_preprocess
     elif preprocessing == "original":
@@ -180,38 +162,16 @@ def apply_preprocessing(labels, number_threads, assigned):
         func = denoising_preprocess
     else:
         func = adaptation_preprocess
-    for i in range(len(chosen_labels)):
-        image_data = chosen_labels.iloc[i]
-        image_path = os.path.join(images_folder_kaggle, image_data['image']+".jpeg")
-        try:
-            img = cv2.imread(image_path)
-            img = func(img)
-            cv2.imwrite(os.path.join(preprocessed_folder_kaggle, image_data['image'] + ".jpeg"), img)
-        except Exception as e:
-            print(image_data["image"])
+    return func
 
 
-threads = []
+class CustomTransform(object):
+    def __init__(self, preprocessing):
+        self.preprocessing = apply_preprocessing(preprocessing)
 
-print("Inicio preprocesamiento")
-
-for i in range(number_of_threads):
-    t = Thread(target=apply_preprocessing, args=(labels, number_of_threads, i))
-    threads.append(t)
-    t.start()
-    print(F"Empezó hilo {i}")
-
-for i in range(number_of_threads):
-    threads[i].join()
-##
-
-if write_csv:
-    list_dir = glob.glob(os.path.join(preprocessed_folder_kaggle, "**.jpeg"))
-    list_dir = [i[i.rfind(os.path.sep)+1:-5] for i in list_dir]
-    labels_preprocessing = labels[labels["image"].isin(list_dir)]
-    labels_preprocessing.to_csv(os.path.join(labels_dir, f"labelsPreprocessing{preprocessing.capitalize()}.csv"),
-                                index=False)
-
-
-print("Acabo preprocesamiento")
-
+    def __call__(self, image):
+        image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
+        image = self.preprocessing(image)
+        # print(type(image), image.shape, np.max(image), np.min(image))
+        image = cv2.cvtColor(image.astype('uint8'), cv2.COLOR_BGR2RGB)
+        return image

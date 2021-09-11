@@ -4,6 +4,7 @@ from torch.utils.data import Dataset, DataLoader
 from torchvision.transforms import ToTensor, Compose, Resize, Normalize, RandomHorizontalFlip, \
     RandomVerticalFlip, RandomRotation, CenterCrop
 from torch import optim
+from Preprocessing import CustomTransform
 
 
 class CustomDataset(Dataset):
@@ -30,8 +31,9 @@ class CustomDataset(Dataset):
 
 
 def build_data_loaders(preprocessing, input_size, normalize, batch_size, labels_df, images_folder):
-    array_train = [ToTensor()]
-    array = [ToTensor()]
+
+    array_train = [CustomTransform(preprocessing), ToTensor()]
+    array = [CustomTransform(preprocessing), ToTensor()]
     if preprocessing in ["original"]:
         array_train.append(CenterCrop((540, 540)))
         array.append((CenterCrop((540, 540))))
@@ -53,9 +55,9 @@ def build_data_loaders(preprocessing, input_size, normalize, batch_size, labels_
     validation_dataset = CustomDataset(labels_df, images_folder, folder="validation", transform=preprocess)
     test_dataset = CustomDataset(labels_df, images_folder, folder="test", transform=preprocess)
 
-    return DataLoader(train_dataset, batch_size=batch_size,  shuffle=True, num_workers=2, persistent_workers=True), \
-           DataLoader(validation_dataset, batch_size=batch_size, num_workers=2, persistent_workers=True),\
-           DataLoader(test_dataset, batch_size=batch_size, num_workers=2, persistent_workers=True)
+    return DataLoader(train_dataset, batch_size=batch_size,  shuffle=True, num_workers=10, persistent_workers=True), \
+           DataLoader(validation_dataset, batch_size=batch_size, num_workers=4, persistent_workers=True),\
+           DataLoader(test_dataset, batch_size=batch_size, num_workers=4, persistent_workers=True)
 
 
 def construct_optimizer(m, optimizer_name, lr):
