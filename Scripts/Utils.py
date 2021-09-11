@@ -1,8 +1,10 @@
-
+import os
+from skimage import io
 from torch.utils.data import Dataset, DataLoader
-from torchvision.transforms import ToTensor, Lambda, Compose, Resize, RandomCrop, Normalize, RandomHorizontalFlip, \
-    RandomVerticalFlip, RandomRotation, CenterCrop, InterpolationMode
-from torch import nn, optim
+from torchvision.transforms import ToTensor, Compose, Resize, Normalize, RandomHorizontalFlip, \
+    RandomVerticalFlip, RandomRotation, CenterCrop
+from torch import optim
+
 
 class CustomDataset(Dataset):
     def __init__(self, labels, img_dir, folder="train", transform=None, target_transform=None):
@@ -30,7 +32,7 @@ class CustomDataset(Dataset):
 def build_data_loaders(preprocessing, input_size, normalize, batch_size, labels_df, images_folder):
     array_train = [ToTensor()]
     array = [ToTensor()]
-    if preprocessing == "original":
+    if preprocessing in ["original"]:
         array_train.append(CenterCrop((540, 540)))
         array.append((CenterCrop((540, 540))))
     if input_size != 540:

@@ -41,12 +41,16 @@ class ModelGenerator:
                       (160, 3, 1.0/1.5, -1), (192, 3, 1.0/1.5, -1), (224, 3, 1.0/1.5, -1), (256, 3, 1.0/1.5, -1),
                       (288, 3, 1.0/1.5, -1), (320, 3, 1.0/1.5, -1), (352, 3, 1.0/1.5, 32.0/352),
                       (384, 2, 1.0/1.5, 32.0/384), (416, 2, 1, 64.0/416), (448, 1, 1, 64.0/448)]
-            linear = 1424
-        return ModelLi2019(blocks, self.num_classes, linear), f"li2019-{str(version)}"
+            linear = 4032
+        model = ModelLi2019(blocks, self.num_classes, linear)
+        model = model.to(self.device)
+        return model, f"li2019-{str(version)}"
 
 
     def ghosh2017(self):
-        return ModelGhosh2017(self.num_classes), "ghosh2017"
+        model = ModelGhosh2017(self.num_classes)
+        model = model.to(self.device)
+        return model, "ghosh2017"
 
 
 
@@ -65,7 +69,7 @@ class BaseBlockLi2019(nn.Module):
     def forward(self, x):
         x = self.conv2d(x)
         x = self.leakyRelu(x)
-        if self.fractional:
+        if self.fractional != 1:
             x = self.fractionalMaxPooling(x)
         if self.p > 0.0:
             x = self.dropout(x)

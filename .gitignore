@@ -7,3 +7,6 @@
 **/.ipynb_checkpoints/
 
 /Database/models
+
+**/.pytest_cache/
+**/__pycache__/
