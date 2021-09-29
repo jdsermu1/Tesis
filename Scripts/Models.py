@@ -160,7 +160,7 @@ class ModelGhosh2017(nn.Module):
         )
         self.fc = nn.Sequential(
             nn.Flatten(),
-            MaxoutGhosh2017(256*7*7, 512, 2),
+            MaxoutGhosh2017(16384, 512, 2),
             nn.Dropout(),
             MaxoutGhosh2017(512, 512, 2),
             nn.Dropout(),
