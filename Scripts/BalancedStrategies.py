@@ -2,12 +2,12 @@ import pandas as pd
 from sklearn.model_selection import train_test_split
 from imblearn.under_sampling import RandomUnderSampler
 from imblearn.over_sampling import RandomOverSampler
+from Utils import get_labels
 
 
 class BalancedStrategiesGenerator:
-    def __init__(self, annotations_filename, random_seed):
-        self.annotations_filename = annotations_filename
-        self.annotations = pd.read_csv(self.annotations_filename)
+    def __init__(self, preprocessing, random_seed):
+        self.annotations = get_labels(preprocessing=preprocessing)
         self.random_seed = random_seed
 
 

@@ -16,7 +16,7 @@ from Utils import build_data_loaders, construct_optimizer
 
 
 normalize = False
-preprocessing = "denoising3"
+preprocessing = "adaptationDenoising2"
 input_size = 540
 strategy = "strategy4"
 lr = 1e-3
@@ -29,23 +29,21 @@ random_seed = 5
 init_epoch = 0
 best_loss = sys.float_info.max
 epochs = 18
-batch_size = 16
+batch_size = 10
 num_classes = 5
 device = "cuda" if torch.cuda.is_available() else "cpu"
-history = True
-useSaved = True
+history = False
+useSaved = False
 
 ##
 
 database_folder = os.path.join("..", "Database")
 images_folder = os.path.join(database_folder, "preprocessing images", preprocessing)
-annotations_file = os.path.join(database_folder, "labels",
-                                f"labelsPreprocessing{preprocessing.capitalize()}.csv")
 run = datetime.now().strftime("%d-%m-%Y %H:%M:%S")
 
 ##
 
-balancedStrategiesGenerator = BalancedStrategiesGenerator(annotations_file, random_seed)
+balancedStrategiesGenerator = BalancedStrategiesGenerator(preprocessing, random_seed)
 labels_df = balancedStrategiesGenerator.apply_strategy(strategy)
 
 ##
@@ -180,7 +178,7 @@ for t in range(init_epoch, epochs):
 
 print("Done!")
 
-if writer and (not useSaved or not os.path.exists(model_path)):
+if history:
     writer.add_hparams({
         "Preprocessing": preprocessing,
         "Data augmentation strategy": strategy,

@@ -8,9 +8,9 @@ import glob
 
 ##
 
-number_of_threads = 21
-preprocessing = "denoising"
-write_csv = True
+number_of_threads = 15
+preprocessing = "denoising2"
+overwrite = True
 
 ##
 
@@ -145,7 +145,7 @@ def adaptation_denoising_preprocess(image, desired_size=540, diameter=540, filte
     (x, y, r) = detect_xyr(image.copy())
     image = center_eye_bulb(image, x, y, r)
     image = set_eyebulb_diameter(image, diameter)
-    image = cv2.fastNlMeansDenoisingColored(image.astype("uint8"), None, h=kwargs.get("h") if kwargs.get("h") else 3)
+    image = cv2.fastNlMeansDenoisingColored(image.astype("uint8"), None, hColor=kwargs.get("h") if kwargs.get("h") else 3)
     image = substract_local_average(image, filter_size, diameter)
     image = crop(image, image.shape[1] // 2, image.shape[0] // 2, max(image.shape[1] // 2, image.shape[0] // 2),
                  percentage)
@@ -161,7 +161,7 @@ def denoising_preprocess(image, desired_size=540, diameter=540, percentage=.9, r
     (x, y, r) = detect_xyr(image.copy())
     image = center_eye_bulb(image, x, y, r)
     image = set_eyebulb_diameter(image, diameter)
-    image = cv2.fastNlMeansDenoisingColored(image.astype("uint8"), None, h=kwargs.get("h") if kwargs.get("h") else 3)
+    image = cv2.fastNlMeansDenoisingColored(image.astype("uint8"), None, hColor=kwargs.get("h") if kwargs.get("h") else 3)
     image = crop(image, image.shape[1] // 2, image.shape[0] // 2, max(image.shape[1] // 2, image.shape[0] // 2),
                  percentage)
     image = add_padding(image)
@@ -183,21 +183,23 @@ def apply_preprocessing(labels, number_threads, assigned):
         func = center_preprocessing
     elif preprocessing.startswith("adaptationDenoising"):
         func = adaptation_denoising_preprocess
-        kargs["h"] = int(preprocessing[len("adaptationDenoising")])
+        kargs["h"] = int(preprocessing[len("adaptationDenoising"):])
     elif preprocessing.startswith("denoising"):
         func = denoising_preprocess
-        kargs["h"] = int(preprocessing[len("denoising")])
+        kargs["h"] = int(preprocessing[len("denoising"):])
     else:
         func = adaptation_preprocess
     for i in range(len(chosen_labels)):
         image_data = chosen_labels.iloc[i]
         image_path = os.path.join(images_folder_kaggle, image_data['image'] + ".jpeg")
-        try:
-            img = cv2.imread(image_path)
-            img = func(img, **kargs)
-            cv2.imwrite(os.path.join(preprocessed_folder_kaggle, image_data['image'] + ".jpeg"), img)
-        except Exception as e:
-            print(image_data["image"])
+        new_path = os.path.join(preprocessed_folder_kaggle, image_data['image'] + ".jpeg")
+        if overwrite or not os.path.exists(new_path):
+            try:
+                img = cv2.imread(image_path)
+                img = func(img, **kargs)
+                cv2.imwrite(new_path, img)
+            except Exception as e:
+                print(image_data["image"])
 
 
 threads = []
@@ -212,13 +214,5 @@ for i in range(number_of_threads):
 
 for i in range(number_of_threads):
     threads[i].join()
-##
-
-if write_csv:
-    list_dir = glob.glob(os.path.join(preprocessed_folder_kaggle, "**.jpeg"))
-    list_dir = [i[i.rfind(os.path.sep) + 1:-5] for i in list_dir]
-    labels_preprocessing = labels[labels["image"].isin(list_dir)]
-    labels_preprocessing.to_csv(os.path.join(labels_dir, f"labelsPreprocessing{preprocessing.capitalize()}.csv"),
-                                index=False)
 
 print("Acabo preprocesamiento")

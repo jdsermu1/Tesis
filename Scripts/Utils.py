@@ -1,9 +1,11 @@
 import os
+import pandas as pd
 from skimage import io
 from torch.utils.data import Dataset, DataLoader
 from torchvision.transforms import ToTensor, Compose, Resize, Normalize, RandomHorizontalFlip, \
     RandomVerticalFlip, RandomRotation, CenterCrop
 from torch import optim
+import glob
 
 
 class CustomDataset(Dataset):
@@ -68,3 +70,16 @@ def construct_optimizer(m, optimizer_name, lr):
     else:
         opt = optim.SGD(m.parameters(), lr=lr)
     return opt
+
+
+def get_labels(preprocessing=None):
+    labels = pd.read_csv(os.path.join('..', "Database", "labels", "labels.csv"))
+    if not preprocessing:
+        return labels
+    elif os.path.exists(os.path.join("..", "Database", "preprocessing images", preprocessing)):
+        list_dir = glob.glob(os.path.join("..", "Database", "preprocessing images", preprocessing, "**.jpeg"))
+        list_dir = [i[i.rfind(os.path.sep) + 1:-5] for i in list_dir]
+        labels_preprocessing = labels[labels["image"].isin(list_dir)].copy()
+        return labels_preprocessing
+    else:
+        raise Exception(f"Preprocessing '{preprocessing}' was not found")
