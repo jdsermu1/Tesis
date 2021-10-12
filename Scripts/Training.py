@@ -10,7 +10,7 @@ from sklearn.metrics import classification_report
 from sklearn.utils.class_weight import compute_class_weight
 from Models import ModelGenerator
 from BalancedStrategies import BalancedStrategiesGenerator
-from Utils import build_data_loaders, construct_optimizer
+from Utils import build_data_loaders, construct_optimizer, write_scalars
 
 ##
 
@@ -90,22 +90,6 @@ if os.path.exists(model_path) and useSaved:
 
 writer = SummaryWriter(os.path.join(database_folder, "runs", run)) if history else None
 
-
-##
-
-
-def write_scalars(dataset, metrics, x):
-    writer.add_scalar(f'Loss/{dataset}', metrics["loss"], x)
-    writer.add_scalar(f'Accuracy/{dataset}', metrics["accuracy"], x)
-    writer.add_scalar(f"Precision/{dataset}/Average", metrics["macro avg"]["precision"], x)
-    writer.add_scalar(f"Recall/{dataset}/Average", metrics["macro avg"]["recall"], x)
-    writer.add_scalar(f"F1_Score/{dataset}/Average", metrics["macro avg"]["f1-score"], x)
-    for j in range(5):
-        writer.add_scalar(f'Precision/{dataset}/Class_{str(j)}', metrics[str(j)]["precision"], x)
-        writer.add_scalar(f'Recall/{dataset}/Class_{str(j)}', metrics[str(j)]["recall"], x)
-        writer.add_scalar(f'F1_Score/{dataset}/Class_{str(j)}', metrics[str(j)]["f1-score"], x)
-
-
 ##
 
 def train(epoch):
@@ -130,7 +114,7 @@ def train(epoch):
                                             labels=[0, 1, 2, 3, 4])
             metrics["loss"] = running_loss / (int(number_batches / 10))
             if history:
-                write_scalars("Training", metrics, epoch * len(train_dataloader) + i)
+                write_scalars(writer, "Training", metrics, epoch * len(train_dataloader) + i)
             running_loss, correct = 0.0, 0
             running_predictions, running_labels = np.array([]), np.array([])
 
