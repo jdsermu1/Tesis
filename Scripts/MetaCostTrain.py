@@ -18,7 +18,7 @@ import gc
 # Recording parameters
 
 execution_time = datetime.now().strftime("%d-%m-%Y %H:%M:%S")
-base_run = None
+base_run = "12-10-2021 12:06:51"
 run = base_run if base_run else execution_time
 recordProgress = True
 
@@ -27,11 +27,12 @@ recordProgress = True
 random_seed = 5
 frac = 1
 m = 3
+q = True
 
 ##
 # Training parameters
 epochs = 7
-train_batch_size = 16
+train_batch_size = 15
 eval_batch_size = 80
 device = "cuda" if torch.cuda.is_available() else "cpu"
 preprocessing = "adaptation"
@@ -70,7 +71,7 @@ def create_samples_models_train():
             train_dataloader = build_data_loaders(preprocessing, 540, False, train_batch_size, iteration_labels,
                                                   images_folder, folder="train", num_workers=2)
             validation_dataloader = build_data_loaders(preprocessing, 540, False, eval_batch_size, iteration_labels,
-                                                       images_folder, folder="validation", num_workers=10)
+                                                       images_folder, folder="validation", num_workers=4)
             model, _ = modelGenerator.resnet("resnet50", True, False, [1024, 512, 256])
             optimizer = construct_optimizer(model, optimizer_name, lr)
             scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.1, verbose=True)
@@ -86,8 +87,8 @@ def create_samples_models_train():
             aux_df["model"] = f"model{str(i)}"
             aux_df["training"] = np.where(aux_df["image"].isin(pd.unique(train_labels["image"])), True, False)
             probabilities_dataloader = build_data_loaders(preprocessing, 540, False, eval_batch_size,
-                                                          iteration_labels, images_folder, folder="train",
-                                                          num_workers=10)
+                                                          aux_df, images_folder, folder="train",
+                                                          num_workers=4)
             aux_df.drop(columns="set", inplace=True)
             aux_df = aux_df.merge(metacost_validation(model, probabilities_dataloader, device), on="image", how="inner")
             gc.collect()
@@ -140,6 +141,14 @@ def model_training(model, optimizer, scheduler, train_dataloader, validation_dat
                 print(f"Checkpoint recorded")
         else:
             scheduler.step()
+    if recordProgress:
+        checkpoint = torch.load(checkpoint_path)
+        model.load_state_dict(checkpoint['model_state_dict'])
+        optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+        scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
+        print("Best loss model version recovered")
+    else:
+        print("WARNING: Process is not being recorded so no checkpoint from best loss model version is being recovered")
 
 
 def train(model, optimizer, dataloader, epoch, writer):
@@ -183,7 +192,7 @@ def validation(model, dataloader):
             test_loss += criterion(pred, y).item()
             all_labels = np.concatenate([all_labels, y.to("cpu").numpy()])
             all_predictions = np.concatenate([all_predictions, pred.argmax(1).to("cpu").numpy()])
-    print(f"Validation Error: \n Avg loss: {test_loss:>8f} \n")
+    print(f"Validation Error Avg loss: {test_loss:>8f}")
     metrics = classification_report(all_labels, all_predictions, output_dict=True, labels=[0, 1, 2, 3, 4])
     metrics["loss"] = test_loss / num_batches
     return metrics
@@ -199,3 +208,11 @@ if recordProgress and not os.path.exists(run_folder):
     print(f"Folder for run: {run} created as subdirectory to save models")
 
 df_labels_metacost = create_samples_models_train()
+
+##
+
+df_adjusted_labels = labels[labels["set"] == "train"]
+
+def find_new_leve(row:pd.Series):
+    participating_
+
