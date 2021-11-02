@@ -8,17 +8,19 @@ from torch import nn, optim
 from torch.utils.tensorboard import SummaryWriter
 from datetime import datetime
 from sklearn.metrics import classification_report
-from BalancedStrategies import BalancedStrategiesGenerator
-from Models import ModelGenerator
-from Scripts.UtilsMetacost import metacost_validation
-from Utils import build_data_loaders, construct_optimizer, write_scalars
+from Scripts.BalancedStrategies import BalancedStrategiesGenerator
+from Scripts.Models import ModelGenerator
+from Scripts.UtilsMetacost import metacost_validation, CostMatrixGenerator
+from Scripts.Utils import build_data_loaders, construct_optimizer, write_scalars
 import gc
+import dask.dataframe as dd
+from dask.multiprocessing import get
 
 ##
 # Recording parameters
 
 execution_time = datetime.now().strftime("%d-%m-%Y %H:%M:%S")
-base_run = "12-10-2021 12:06:51"
+base_run = "13-10-2021 01:17:53"
 run = base_run if base_run else execution_time
 recordProgress = True
 
@@ -26,14 +28,14 @@ recordProgress = True
 # Metacost parameters
 random_seed = 5
 frac = 1
-m = 3
+m = 10
 q = True
 
 ##
 # Training parameters
-epochs = 7
+epochs = 10
 train_batch_size = 15
-eval_batch_size = 80
+eval_batch_size = 90
 device = "cuda" if torch.cuda.is_available() else "cpu"
 preprocessing = "adaptation"
 lr = 1e-3
@@ -59,6 +61,7 @@ labels = balancedStrategiesGenerator.apply_strategy("strategy0")
 def create_samples_models_train():
     if os.path.exists(os.path.join(run_folder, "metacostLabels.csv")):
         labels_metacost = pd.read_csv(os.path.join(run_folder, "metacostLabels.csv"))
+        labels_metacost = labels_metacost[labels_metacost["model"].isin([f"model{str(i)}" for i in range(0, m)])]
         print(f"Metacost labels found and loaded from directory")
     else:
         labels_metacost = pd.DataFrame([])
@@ -209,10 +212,28 @@ if recordProgress and not os.path.exists(run_folder):
 
 df_labels_metacost = create_samples_models_train()
 
+
 ##
 
 df_adjusted_labels = labels[labels["set"] == "train"]
 
-def find_new_leve(row:pd.Series):
-    participating_
+costMatrixGenerator = CostMatrixGenerator(df_adjusted_labels, seed=random_seed)
+cost_matrix = costMatrixGenerator.frequency_value(max_value=1)
+
+
+def find_new_level(row: pd.Series):
+    df_votes = df_labels_metacost[df_labels_metacost["image"] == row["image"]].copy()
+    if not q:
+        df_votes = df_votes[df_votes["training"] is False]
+    estimated_p = df_votes[["P" + str(j) for j in range(5)]].mean().to_numpy()
+    estimated_cost = np.matmul(cost_matrix, estimated_p.reshape(estimated_p.shape[0], 1))
+    estimated_category = np.argmin(estimated_cost)
+    return estimated_category
+
+
+df_adjusted_labels["new_level"] = dd.from_pandas(df_adjusted_labels, npartitions=1).map_partitions(lambda df: df.apply(find_new_level, axis=1)).compute(scheduler=get)
+print(pd.DataFrame({"percentage": df_adjusted_labels["new_level"].value_counts(normalize=True)*100}))
+#
+
+##
 

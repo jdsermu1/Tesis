@@ -66,7 +66,7 @@ def construct_optimizer(m, optimizer_name, lr):
 
 
 def get_labels(preprocessing=None):
-    labels = pd.read_csv(os.path.join('..', "Database", "labels", "labels.csv"))
+    labels = pd.read_csv(os.path.join("..", "Database", "labels", "labels.csv"))
     if not preprocessing:
         return labels
     elif os.path.exists(os.path.join("..", "Database", "preprocessing images", preprocessing)):
