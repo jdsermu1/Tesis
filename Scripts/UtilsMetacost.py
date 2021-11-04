@@ -1,3 +1,5 @@
+import math
+
 import pandas as pd
 import torch
 import numpy as np
@@ -29,7 +31,7 @@ class CostMatrixGenerator:
         return np_cost_matrix
 
 
-    def frequency_value(self, categories=5, max_value=1000):
+    def frequency_value(self, categories=5, max_value=1):
         np_cost_matrix = np.ones([categories, categories])
         for i in range(np_cost_matrix.shape[0]):
             for j in range(np_cost_matrix.shape[1]):
@@ -37,6 +39,28 @@ class CostMatrixGenerator:
                     np_cost_matrix[i, j] = 0
                 else:
                     np_cost_matrix[i, j] *= max_value * self.df_probabilities.loc[i] / self.df_probabilities.loc[j]
+        return np_cost_matrix
+
+
+    def distance_frequency_value(self, categories=5, max_value=1000):
+        np_cost_matrix = np.ones([categories, categories])
+        for i in range(np_cost_matrix.shape[0]):
+            for j in range(np_cost_matrix.shape[1]):
+                if i == j:
+                    np_cost_matrix[i, j] = 0
+                else:
+                    np_cost_matrix[i, j] *= math.sqrt((i-j)**2) * self.df_probabilities.loc[i] / self.df_probabilities.loc[j]
+        return np_cost_matrix
+
+
+    def distance_value(self, categories=5, max_value=1000):
+        np_cost_matrix = np.ones([categories, categories])
+        for i in range(np_cost_matrix.shape[0]):
+            for j in range(np_cost_matrix.shape[1]):
+                if i == j:
+                    np_cost_matrix[i, j] = 0
+                else:
+                    np_cost_matrix[i, j] *= math.sqrt((i-j)**2)
         return np_cost_matrix
 
 

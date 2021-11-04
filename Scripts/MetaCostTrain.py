@@ -242,7 +242,8 @@ df_labels_metacost = create_samples_models_train()
 df_adjusted_labels = labels[labels["set"] == "train"]
 
 costMatrixGenerator = CostMatrixGenerator(df_adjusted_labels, seed=random_seed)
-cost_matrix = costMatrixGenerator.frequency_value(max_value=1)
+cost_matrix = costMatrixGenerator.distance_value()
+print(cost_matrix)
 
 
 def find_new_level(row: pd.Series):
@@ -255,7 +256,7 @@ def find_new_level(row: pd.Series):
     return estimated_category
 
 
-df_adjusted_labels["new_level"] = dd.from_pandas(df_adjusted_labels, npartitions=1).map_partitions(lambda df: df.apply(find_new_level, axis=1)).compute(scheduler=get)
+df_adjusted_labels["new_level"] = dd.from_pandas(df_adjusted_labels, npartitions=22).map_partitions(lambda df: df.apply(find_new_level, axis=1)).compute(scheduler=get)
 print(pd.DataFrame({"percentage": df_adjusted_labels["new_level"].value_counts(normalize=True)*100}))
 #
 
