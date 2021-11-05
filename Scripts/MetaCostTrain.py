@@ -7,7 +7,7 @@ import numpy as np
 from torch import nn, optim
 from torch.utils.tensorboard import SummaryWriter
 from datetime import datetime
-from sklearn.metrics import classification_report
+from sklearn.metrics import classification_report, accuracy_score
 from Scripts.BalancedStrategies import BalancedStrategiesGenerator
 from Scripts.Models import ModelGenerator
 from Scripts.UtilsMetacost import metacost_validation, CostMatrixGenerator
@@ -20,7 +20,7 @@ from dask.multiprocessing import get
 # Recording parameters
 
 execution_time = datetime.now().strftime("%d-%m-%Y %H:%M:%S")
-base_run = "13-10-2021 01:17:53"
+base_run = "03-11-2021 06:47:38"
 run = base_run if base_run else execution_time
 recordProgress = True
 
@@ -40,6 +40,7 @@ device = "cuda" if torch.cuda.is_available() else "cpu"
 preprocessing = "adaptation"
 lr = 1e-3
 optimizer_name = "Adam"
+ordinal = True
 
 ##
 # Folders
@@ -72,10 +73,10 @@ def create_samples_models_train():
                                                                    random_state=random_seed + i)
             iteration_labels = pd.concat([train_labels, labels[labels["set"] == "validation"]]).copy()
             train_dataloader = build_data_loaders(preprocessing, 540, False, train_batch_size, iteration_labels,
-                                                  images_folder, folder="train", num_workers=2)
+                                                  images_folder, folder="train", num_workers=2, ordinal=ordinal)
             validation_dataloader = build_data_loaders(preprocessing, 540, False, eval_batch_size, iteration_labels,
-                                                       images_folder, folder="validation", num_workers=4)
-            model, _ = modelGenerator.resnet("resnet50", True, False, [1024, 512, 256])
+                                                       images_folder, folder="validation", num_workers=4, ordinal=ordinal)
+            model, _ = modelGenerator.resnet("resnet50", True, False, [1024, 512, 256], ordinal=ordinal)
             optimizer = construct_optimizer(model, optimizer_name, lr)
             scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.1, verbose=True)
             print(f"Training of model {i} began")
@@ -163,19 +164,30 @@ def train(model, optimizer, dataloader, epoch, writer):
     for i, (X, y, _) in enumerate(dataloader):
         X, y = X.to(device), y.to(device)
         pred = model(X)
-        loss = criterion(pred, y)
+        if not ordinal:
+            loss = criterion(pred, y)
+        else:
+            loss = criterion(pred, y).sum()
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
         running_loss += loss.item()
-        running_labels = np.concatenate([running_labels, y.to("cpu").numpy()])
-        running_predictions = np.concatenate([running_predictions, pred.argmax(1).to("cpu").numpy()])
+        if not ordinal:
+            running_labels = np.concatenate([running_labels, y.to("cpu").numpy()])
+            running_predictions = np.concatenate([running_predictions, pred.argmax(1).to("cpu").numpy()])
+        else:
+            running_labels = np.concatenate([running_labels, ((y.to("cpu") > 0.5).cumprod(axis=1)
+                                                              .sum(axis=1)-1).numpy()])
+            running_predictions = np.concatenate([running_predictions, ((pred.to("cpu") > 0.5).cumprod(axis=1)
+                                                                        .sum(axis=1)-1).numpy()])
         if i % (int(number_batches / 3)) == 0 and i != 0:
             print(f"loss: {running_loss / (int(number_batches / 5)):>7f}  [{i * len(X):>5d}/{size:>5d}]")
             metrics = classification_report(running_labels, running_predictions, output_dict=True,
                                             labels=[0, 1, 2, 3, 4])
             metrics["loss"] = running_loss / (int(number_batches / 10))
             if recordProgress:
+                if not metrics.get("accuracy"):
+                    metrics["accuracy"] = accuracy_score(running_labels, running_predictions, normalize=True)
                 write_scalars(writer, "Training", metrics, epoch * len(dataloader) + i)
                 print(f"Training step recorded")
             running_loss, correct = 0.0, 0
@@ -192,11 +204,20 @@ def validation(model, dataloader):
         for i, (X, y, _) in enumerate(dataloader):
             X, y = X.to(device), y.to(device)
             pred = model(X)
-            test_loss += criterion(pred, y).item()
-            all_labels = np.concatenate([all_labels, y.to("cpu").numpy()])
-            all_predictions = np.concatenate([all_predictions, pred.argmax(1).to("cpu").numpy()])
+            if not ordinal:
+                test_loss += criterion(pred, y).item()
+                all_labels = np.concatenate([all_labels, y.to("cpu").numpy()])
+                all_predictions = np.concatenate([all_predictions, pred.argmax(1).to("cpu").numpy()])
+            else:
+                test_loss += criterion(pred, y).sum().item()
+                all_labels = np.concatenate(
+                    [all_labels, ((y.to("cpu") > 0.5).cumprod(axis=1).sum(axis=1) - 1).numpy()])
+                all_predictions = np.concatenate(
+                    [all_predictions, ((pred.to("cpu") > 0.5).cumprod(axis=1).sum(axis=1) - 1).numpy()])
     print(f"Validation Error Avg loss: {test_loss:>8f}")
     metrics = classification_report(all_labels, all_predictions, output_dict=True, labels=[0, 1, 2, 3, 4])
+    if not metrics.get("accuracy"):
+        metrics["accuracy"] = accuracy_score(all_labels, all_predictions, normalize=True)
     metrics["loss"] = test_loss / num_batches
     return metrics
 
@@ -204,7 +225,10 @@ def validation(model, dataloader):
 ##
 # Algorithm
 modelGenerator = ModelGenerator(device, 5)
-criterion = nn.NLLLoss()
+if not ordinal:
+    criterion = nn.NLLLoss()
+else:
+    criterion = nn.MSELoss(reduction='none')
 
 if recordProgress and not os.path.exists(run_folder):
     os.makedirs(os.path.join(run_folder, "models"))

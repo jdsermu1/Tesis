@@ -1,5 +1,6 @@
 import os
 import pandas as pd
+import torch
 from skimage import io
 from torch.utils.data import Dataset, DataLoader
 from torch.utils.tensorboard import SummaryWriter
@@ -32,8 +33,8 @@ class CustomDataset(Dataset):
         return image, label, self.img_labels.iloc[idx, 0]
 
 
-def build_data_loaders(preprocessing, input_size, normalize, batch_size, labels_df, images_folder, folder="train",
-                       num_workers=2):
+def build_data_loaders(preprocessing, input_size, normalize, batch_size, labels_df, images_folder, ordinal=False,
+                       folder="train", num_workers=2):
     array = [ToTensor()]
     if preprocessing in ["original"]:
         array.append((CenterCrop((540, 540))))
@@ -48,7 +49,8 @@ def build_data_loaders(preprocessing, input_size, normalize, batch_size, labels_
 
     preprocess = Compose(array)
 
-    dataset = CustomDataset(labels_df, images_folder, folder=folder, transform=preprocess)
+    dataset = CustomDataset(labels_df, images_folder, folder=folder, transform=preprocess,
+                            target_transform= target_to_ordinal if ordinal else None)
 
     return DataLoader(dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers, persistent_workers=True)
 
@@ -76,6 +78,12 @@ def get_labels(preprocessing=None):
         return labels_preprocessing
     else:
         raise Exception(f"Preprocessing '{preprocessing}' was not found")
+
+
+def target_to_ordinal(target):
+    aux_tensor = torch.tensor([0, 1, 2, 3, 4])
+    return torch.where(aux_tensor <= target, 1.0, 0.0)
+
 
 
 def write_scalars(summary_writer: SummaryWriter, dataset: str, metrics: dict, x):
