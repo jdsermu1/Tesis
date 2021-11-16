@@ -12,7 +12,7 @@ class ModelGenerator:
         self.num_classes = num_classes
 
 
-    def resnet(self, version, pretrained, freeze, dense, ordinal = False):
+    def resnet(self, version, pretrained, freeze, dense, ordinal=False):
         model = getattr(models, version)(pretrained=pretrained)
         if freeze:
             for name, param in model.named_parameters():
