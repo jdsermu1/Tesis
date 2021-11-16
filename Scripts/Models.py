@@ -12,7 +12,7 @@ class ModelGenerator:
         self.num_classes = num_classes
 
 
-    def resnet(self, version, pretrained, freeze, dense, ordinal=False):
+    def resnet(self, version, pretrained, freeze, dense, classification_type="categorical"):
         model = getattr(models, version)(pretrained=pretrained)
         if freeze:
             for name, param in model.named_parameters():
@@ -21,11 +21,17 @@ class ModelGenerator:
         for i, layer in enumerate(dense):
             fc.append((f"linear{i}", nn.Linear(model.fc.in_features if i == 0 else dense[i - 1], layer)))
             fc.append((f"relu{i}", nn.ReLU()))
-        fc.append((f'linear{len(dense)}', nn.Linear(dense[-1], self.num_classes)))
-        if not ordinal:
+
+        if classification_type == "categorical":
+            fc.append((f'linear{len(dense)}', nn.Linear(dense[-1], self.num_classes)))
             fc.append((f"logSoftmax", nn.LogSoftmax(dim=1)))
-        else:
+        elif classification_type == "special_ordinal":
+            fc.append((f'linear{len(dense)}', nn.Linear(dense[-1], self.num_classes)))
             fc.append((f"Sigmoid", nn.Sigmoid()))
+        elif classification_type == "ordinal":
+            fc.append((f'linear{len(dense)}', nn.Linear(dense[-1], 1)))
+        else:
+            raise Exception("type ending for CNN is not valid")
         model.fc = nn.Sequential(OrderedDict(fc))
         model = model.to(self.device)
         return model, version + str(freeze) + '-'.join(map(str, dense))

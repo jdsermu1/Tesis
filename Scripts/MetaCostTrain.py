@@ -7,11 +7,10 @@ import numpy as np
 from torch import nn, optim
 from torch.utils.tensorboard import SummaryWriter
 from datetime import datetime
-from sklearn.metrics import classification_report, accuracy_score
 from Scripts.BalancedStrategies import BalancedStrategiesGenerator
 from Scripts.Models import ModelGenerator
 from Scripts.UtilsMetacost import metacost_validation, CostMatrixGenerator
-from Scripts.Utils import build_data_loaders, construct_optimizer, write_scalars
+from Scripts.Utils import build_data_loaders, construct_optimizer, write_scalars, train, validation
 import gc
 import dask.dataframe as dd
 from dask.multiprocessing import get
@@ -20,9 +19,9 @@ from dask.multiprocessing import get
 # Recording parameters
 
 execution_time = datetime.now().strftime("%d-%m-%Y %H:%M:%S")
-base_run = "03-11-2021 06:47:38"
+base_run = None
 run = base_run if base_run else execution_time
-recordProgress = True
+recordProgress = False
 
 ##
 # Metacost parameters
@@ -40,7 +39,8 @@ device = "cuda" if torch.cuda.is_available() else "cpu"
 preprocessing = "adaptation"
 lr = 1e-3
 optimizer_name = "Adam"
-ordinal = True
+classification_type = "ordinal"   # categorical, ordinal, special_ordinal
+assert(classification_type in ["categorical", "ordinal", "special_ordinal"])
 
 ##
 # Folders
@@ -73,10 +73,13 @@ def create_samples_models_train():
                                                                    random_state=random_seed + i)
             iteration_labels = pd.concat([train_labels, labels[labels["set"] == "validation"]]).copy()
             train_dataloader = build_data_loaders(preprocessing, 540, False, train_batch_size, iteration_labels,
-                                                  images_folder, folder="train", num_workers=2, ordinal=ordinal)
+                                                  images_folder, folder="train", num_workers=2,
+                                                  classification_type=classification_type)
             validation_dataloader = build_data_loaders(preprocessing, 540, False, eval_batch_size, iteration_labels,
-                                                       images_folder, folder="validation", num_workers=4, ordinal=ordinal)
-            model, _ = modelGenerator.resnet("resnet50", True, False, [1024, 512, 256], ordinal=ordinal)
+                                                       images_folder, folder="validation", num_workers=4,
+                                                       classification_type=classification_type)
+            model, _ = modelGenerator.resnet("resnet50", True, False, [1024, 512, 256],
+                                             classification_type=classification_type)
             optimizer = construct_optimizer(model, optimizer_name, lr)
             scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.1, verbose=True)
             print(f"Training of model {i} began")
@@ -120,10 +123,10 @@ def model_training(model, optimizer, scheduler, train_dataloader, validation_dat
         best_loss = checkpoint['best_loss']
         print(f"Model {index} loaded from checkpoint, starting epoch: {init_epoch}")
     for epoch in range(init_epoch, epochs):
-        train(model, optimizer, train_dataloader, epoch, writer)
+        train(model, optimizer, criterion, train_dataloader, epoch, recordProgress, writer, device, classification_type)
         gc.collect()
         torch.cuda.empty_cache()
-        validation_metrics = validation(model, validation_dataloader)
+        validation_metrics = validation(model, criterion, validation_dataloader, device, classification_type)
         gc.collect()
         torch.cuda.empty_cache()
         if recordProgress:
@@ -155,80 +158,13 @@ def model_training(model, optimizer, scheduler, train_dataloader, validation_dat
         print("WARNING: Process is not being recorded so no checkpoint from best loss model version is being recovered")
 
 
-def train(model, optimizer, dataloader, epoch, writer):
-    model.train()
-    size = len(dataloader.dataset)
-    number_batches = len(dataloader)
-    running_loss = 0.0
-    running_predictions, running_labels = np.array([]), np.array([])
-    for i, (X, y, _) in enumerate(dataloader):
-        X, y = X.to(device), y.to(device)
-        pred = model(X)
-        if not ordinal:
-            loss = criterion(pred, y)
-        else:
-            loss = criterion(pred, y).sum()
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
-        running_loss += loss.item()
-        if not ordinal:
-            running_labels = np.concatenate([running_labels, y.to("cpu").numpy()])
-            running_predictions = np.concatenate([running_predictions, pred.argmax(1).to("cpu").numpy()])
-        else:
-            running_labels = np.concatenate([running_labels, ((y.to("cpu") > 0.5).cumprod(axis=1)
-                                                              .sum(axis=1)-1).numpy()])
-            running_predictions = np.concatenate([running_predictions, ((pred.to("cpu") > 0.5).cumprod(axis=1)
-                                                                        .sum(axis=1)-1).numpy()])
-        if i % (int(number_batches / 3)) == 0 and i != 0:
-            print(f"loss: {running_loss / (int(number_batches / 5)):>7f}  [{i * len(X):>5d}/{size:>5d}]")
-            metrics = classification_report(running_labels, running_predictions, output_dict=True,
-                                            labels=[0, 1, 2, 3, 4])
-            metrics["loss"] = running_loss / (int(number_batches / 10))
-            if recordProgress:
-                if not metrics.get("accuracy"):
-                    metrics["accuracy"] = accuracy_score(running_labels, running_predictions, normalize=True)
-                write_scalars(writer, "Training", metrics, epoch * len(dataloader) + i)
-                print(f"Training step recorded")
-            running_loss, correct = 0.0, 0
-            running_predictions, running_labels = np.array([]), np.array([])
-
-
-def validation(model, dataloader):
-    model.eval()
-    num_batches = len(dataloader)
-    test_loss = 0
-    all_predictions = np.array([])
-    all_labels = np.array([])
-    with torch.no_grad():
-        for i, (X, y, _) in enumerate(dataloader):
-            X, y = X.to(device), y.to(device)
-            pred = model(X)
-            if not ordinal:
-                test_loss += criterion(pred, y).item()
-                all_labels = np.concatenate([all_labels, y.to("cpu").numpy()])
-                all_predictions = np.concatenate([all_predictions, pred.argmax(1).to("cpu").numpy()])
-            else:
-                test_loss += criterion(pred, y).sum().item()
-                all_labels = np.concatenate(
-                    [all_labels, ((y.to("cpu") > 0.5).cumprod(axis=1).sum(axis=1) - 1).numpy()])
-                all_predictions = np.concatenate(
-                    [all_predictions, ((pred.to("cpu") > 0.5).cumprod(axis=1).sum(axis=1) - 1).numpy()])
-    print(f"Validation Error Avg loss: {test_loss:>8f}")
-    metrics = classification_report(all_labels, all_predictions, output_dict=True, labels=[0, 1, 2, 3, 4])
-    if not metrics.get("accuracy"):
-        metrics["accuracy"] = accuracy_score(all_labels, all_predictions, normalize=True)
-    metrics["loss"] = test_loss / num_batches
-    return metrics
-
-
 ##
 # Algorithm
 modelGenerator = ModelGenerator(device, 5)
-if not ordinal:
+if classification_type == "categorical":
     criterion = nn.NLLLoss()
 else:
-    criterion = nn.MSELoss(reduction='none')
+    criterion = nn.MSELoss(reduction='sum')
 
 if recordProgress and not os.path.exists(run_folder):
     os.makedirs(os.path.join(run_folder, "models"))
@@ -256,9 +192,7 @@ def find_new_level(row: pd.Series):
     return estimated_category
 
 
-df_adjusted_labels["new_level"] = dd.from_pandas(df_adjusted_labels, npartitions=22).map_partitions(lambda df: df.apply(find_new_level, axis=1)).compute(scheduler=get)
+df_adjusted_labels["new_level"] = dd.from_pandas(df_adjusted_labels,
+                                                 npartitions=22).map_partitions(
+    lambda df: df.apply(find_new_level, axis=1)).compute(scheduler=get)
 print(pd.DataFrame({"percentage": df_adjusted_labels["new_level"].value_counts(normalize=True)*100}))
-#
-
-##
-
