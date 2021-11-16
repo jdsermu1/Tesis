@@ -2,13 +2,30 @@ import pandas as pd
 from sklearn.model_selection import train_test_split
 from imblearn.under_sampling import RandomUnderSampler
 from imblearn.over_sampling import RandomOverSampler
-from Utils import get_labels
+from Scripts.Utils import get_labels
 
 
 class BalancedStrategiesGenerator:
     def __init__(self, preprocessing, random_seed):
         self.annotations = get_labels(preprocessing=preprocessing)
         self.random_seed = random_seed
+
+
+    def strategy0(self, labels):
+        test_size = 15600
+        validation_size = 5000
+        labels_train, labels_test_validation = train_test_split(labels, test_size=test_size + validation_size,
+                                                                stratify=labels["level"], random_state=self.random_seed)
+        labels_validation, labels_test = train_test_split(labels_test_validation, test_size=test_size,
+                                                          stratify=labels_test_validation["level"],
+                                                          random_state=self.random_seed)
+        labels_train["set"] = "train"
+        labels_validation["set"] = "validation"
+        labels_test["set"] = "test"
+        labels_strategy = pd.concat([labels_train, labels_validation, labels_test])
+        return labels_strategy
+
+
 
 
     def strategy1(self, labels):
@@ -99,7 +116,9 @@ class BalancedStrategiesGenerator:
 
 
     def apply_strategy(self, strategy):
-        if strategy == "strategy1":
+        if strategy == "strategy0":
+            func = self.strategy0
+        elif strategy == "strategy1":
             func = self.strategy1
         elif strategy == "strategy2":
             func = self.strategy2
@@ -108,6 +127,6 @@ class BalancedStrategiesGenerator:
         elif strategy == "strategy4":
             func = self.strategy4
         else:
-            func = self.strategy1
+            func = self.strategy0
         labels_df = func(self.annotations)
         return labels_df

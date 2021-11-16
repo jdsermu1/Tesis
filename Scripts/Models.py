@@ -12,7 +12,7 @@ class ModelGenerator:
         self.num_classes = num_classes
 
 
-    def resnet(self, version, pretrained, freeze, dense):
+    def resnet(self, version, pretrained, freeze, dense, ordinal=False):
         model = getattr(models, version)(pretrained=pretrained)
         if freeze:
             for name, param in model.named_parameters():
@@ -22,7 +22,10 @@ class ModelGenerator:
             fc.append((f"linear{i}", nn.Linear(model.fc.in_features if i == 0 else dense[i - 1], layer)))
             fc.append((f"relu{i}", nn.ReLU()))
         fc.append((f'linear{len(dense)}', nn.Linear(dense[-1], self.num_classes)))
-        fc.append((f"logSoftmax", nn.LogSoftmax(dim=1)))
+        if not ordinal:
+            fc.append((f"logSoftmax", nn.LogSoftmax(dim=1)))
+        else:
+            fc.append((f"Sigmoid", nn.Sigmoid()))
         model.fc = nn.Sequential(OrderedDict(fc))
         model = model.to(self.device)
         return model, version + str(freeze) + '-'.join(map(str, dense))

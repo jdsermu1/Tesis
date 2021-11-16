@@ -1,5 +1,6 @@
 /Database/images/*.jpeg
 /Database/preprocessing images/*/*.jpeg
+/Database/metacost/*
 **/diabetic-retinopathy-detection.zip
 
 **/.idea/

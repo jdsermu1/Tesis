@@ -1,7 +1,9 @@
 import os
 import pandas as pd
+import torch
 from skimage import io
 from torch.utils.data import Dataset, DataLoader
+from torch.utils.tensorboard import SummaryWriter
 from torchvision.transforms import ToTensor, Compose, Resize, Normalize, RandomHorizontalFlip, \
     RandomVerticalFlip, RandomRotation, CenterCrop
 from torch import optim
@@ -28,36 +30,29 @@ class CustomDataset(Dataset):
             image = self.transform(image)
         if self.target_transform:
             label = self.target_transform(label)
-        return image, label
+        return image, label, self.img_labels.iloc[idx, 0]
 
 
-def build_data_loaders(preprocessing, input_size, normalize, batch_size, labels_df, images_folder):
-    array_train = [ToTensor()]
+def build_data_loaders(preprocessing, input_size, normalize, batch_size, labels_df, images_folder, ordinal=False,
+                       folder="train", num_workers=2):
     array = [ToTensor()]
     if preprocessing in ["original"]:
-        array_train.append(CenterCrop((540, 540)))
         array.append((CenterCrop((540, 540))))
     if input_size != 540:
-        array_train.append(Resize(input_size))
         array.append(Resize(input_size))
     if normalize:
-        array_train.append(Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]))
         array.append(Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]))
-    array_train.append(RandomVerticalFlip(0.5))
-    array_train.append(RandomHorizontalFlip(0.5))
-    array_train.append(RandomRotation((0, 360)))
-
-    preprocess_train = Compose(array_train)
+    if folder == "train":
+        array.append(RandomVerticalFlip(0.5))
+        array.append(RandomHorizontalFlip(0.5))
+        array.append(RandomRotation((0, 360)))
 
     preprocess = Compose(array)
 
-    train_dataset = CustomDataset(labels_df, images_folder, transform=preprocess_train)
-    validation_dataset = CustomDataset(labels_df, images_folder, folder="validation", transform=preprocess)
-    test_dataset = CustomDataset(labels_df, images_folder, folder="test", transform=preprocess)
+    dataset = CustomDataset(labels_df, images_folder, folder=folder, transform=preprocess,
+                            target_transform= target_to_ordinal if ordinal else None)
 
-    return DataLoader(train_dataset, batch_size=batch_size,  shuffle=True, num_workers=2, persistent_workers=True), \
-           DataLoader(validation_dataset, batch_size=batch_size, num_workers=2, persistent_workers=True),\
-           DataLoader(test_dataset, batch_size=batch_size, num_workers=2, persistent_workers=True)
+    return DataLoader(dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers, persistent_workers=True)
 
 
 def construct_optimizer(m, optimizer_name, lr):
@@ -73,7 +68,7 @@ def construct_optimizer(m, optimizer_name, lr):
 
 
 def get_labels(preprocessing=None):
-    labels = pd.read_csv(os.path.join('..', "Database", "labels", "labels.csv"))
+    labels = pd.read_csv(os.path.join("..", "Database", "labels", "labels.csv"))
     if not preprocessing:
         return labels
     elif os.path.exists(os.path.join("..", "Database", "preprocessing images", preprocessing)):
@@ -83,3 +78,21 @@ def get_labels(preprocessing=None):
         return labels_preprocessing
     else:
         raise Exception(f"Preprocessing '{preprocessing}' was not found")
+
+
+def target_to_ordinal(target):
+    aux_tensor = torch.tensor([0, 1, 2, 3, 4])
+    return torch.where(aux_tensor <= target, 1.0, 0.0)
+
+
+
+def write_scalars(summary_writer: SummaryWriter, dataset: str, metrics: dict, x):
+    summary_writer.add_scalar(f'Loss/{dataset}', metrics["loss"], x)
+    summary_writer.add_scalar(f'Accuracy/{dataset}', metrics["accuracy"], x)
+    summary_writer.add_scalar(f"Precision/{dataset}/Average", metrics["macro avg"]["precision"], x)
+    summary_writer.add_scalar(f"Recall/{dataset}/Average", metrics["macro avg"]["recall"], x)
+    summary_writer.add_scalar(f"F1_Score/{dataset}/Average", metrics["macro avg"]["f1-score"], x)
+    for j in range(5):
+        summary_writer.add_scalar(f'Precision/{dataset}/Class_{str(j)}', metrics[str(j)]["precision"], x)
+        summary_writer.add_scalar(f'Recall/{dataset}/Class_{str(j)}', metrics[str(j)]["recall"], x)
+        summary_writer.add_scalar(f'F1_Score/{dataset}/Class_{str(j)}', metrics[str(j)]["f1-score"], x)
